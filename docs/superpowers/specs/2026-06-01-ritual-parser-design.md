@@ -2,7 +2,7 @@
 
 > **Дата:** 2026-06-01
 > **Статус:** Утверждённый дизайн (ревизия 2: сверен с реальной базой, спорная зона исключена) → план реализации
-> **Базируется на:** рабочем crimea-парсере. Реальный код: `hotels_sbor_baza/_extracted/crimea_parser/` (парсер, версия новее снимка прода `_server_current`) + `hotels_sbor_baza/parser_admin_bot/` (aiogram-бот №2). Полный клон с переименованием.
+> **Базируется на:** рабочем crimea-парсере. Реальный код: `hotels_sbor_baza/_extracted/ritual_parser/` (парсер, версия новее снимка прода `_server_current`) + `hotels_sbor_baza/ritual_admin_bot/` (aiogram-бот №2). Полный клон с переименованием.
 
 ---
 
@@ -20,7 +20,7 @@
 
 Дополнительно: **флористика** (флористические магазины, цветочные) — собираем рядом, на отдельную вкладку XLSX (будущая ниша).
 
-Архитектурный клон `crimea_parser` — переиспользуем 90% кода (universal storage / dedup / source-parsers / watchdog / pytest / deploy). Меняем словари, географию, словари классификации, токены и пути.
+Архитектурный клон `ritual_parser` — переиспользуем 90% кода (universal storage / dedup / source-parsers / watchdog / pytest / deploy). Меняем словари, географию, словари классификации, токены и пути.
 
 ---
 
@@ -50,7 +50,7 @@ ritual_admin_bot.service             ├── ritual_parser.timer (Mon 03:00 MS
                                      «Ritual_Leads_Crimea_ZP_KhO»
 ```
 
-### Что сохраняется как в crimea_parser
+### Что сохраняется как в ritual_parser
 
 **utils/** (универсальные модули, переиспользуются без правок):
 - `storage.py` (CSV + dedup + append-mode, FIELDS остаются прежними)
@@ -77,7 +77,7 @@ ritual_admin_bot.service             ├── ritual_parser.timer (Mon 03:00 MS
 - `parsers/avito.py` — отельные объявления, ban IP
 - `parsers/twogis.py` — Крым геоблок (опционально вернуть в фазе 2 для Запорожья/Херсонщины, если 2ГИС там открыт)
 - `parsers/gosreestr.py` — реестр гостиниц, NXDOMAIN с 2022
-- `crimea_bot.service` + папка `bot/` (бот №1 stdlib) — не клонируем
+- `ritual_bot.service` + папка `bot/` (бот №1 stdlib) — не клонируем
 - `hotel_lead_bot/` — отдельный CRM-проект в том же репо, к парсеру не относится
 
 ### Что адаптируется (правки конкретных функций)
@@ -98,7 +98,7 @@ ritual_admin_bot.service             ├── ritual_parser.timer (Mon 03:00 MS
 
 ## 3. Региональная конфигурация
 
-### 3.1 Крым (наследуется из crimea_parser geo_city)
+### 3.1 Крым (наследуется из ritual_parser geo_city)
 
 Симферополь, Севастополь, Ялта (+микрорайоны: Ливадия, Гурзуф, Партенит, Мисхор, Алупка, Симеиз, Форос, Кореиз, Никита, Гаспра, Голубой Залив, Кацивели, Понизовка, Массандра), Алушта (+Малореченское, Солнечногорское, Рыбачье, Семидворье), Евпатория, Саки, Заозёрное, Новофёдоровка, Витино, Окуневка, Межводное, Черноморское, Феодосия, Береговое, Приморский, Орджоникидзе, Курортное, Коктебель, Морское, Судак, Новый Свет, Керчь, Щёлкино, Бахчисарай, Соколиное, Песчаное, Угловое, Любимовка, Кача, Балаклава, Орлиное.
 
@@ -138,7 +138,7 @@ ritual_admin_bot.service             ├── ritual_parser.timer (Mon 03:00 MS
 - Вызывает `database.getCities(country_id=1, q=<name>)` через VK API
 - Печатает соответствие `name → id` для копирования в `vk_groups.py:VK_CITIES`
 
-Для крымских городов VK city_id наследуются из `crimea_parser/parsers/vk_groups.py:VK_CITIES` — копируются как есть в ритуальную версию.
+Для крымских городов VK city_id наследуются из `ritual_parser/parsers/vk_groups.py:VK_CITIES` — копируются как есть в ритуальную версию.
 
 ### 3.5 OSM Overpass bbox
 
@@ -297,7 +297,7 @@ craft=stonemason   ← border-case: мастер по камню → ambiguous, 
 
 ## 5. Структура проекта
 
-Структура **плоская** — зеркало `_extracted/crimea_parser/`: исходники парсера лежат в корне репо (а не в подпапке `ritual_parser/`). Это сохраняет внутренние импорты (`from utils...`, `from parsers...`) без правок. На сервере содержимое корня разворачивается в `/home/ritual_parser/`, бот — в `/opt/ritual_admin_bot/`.
+Структура **плоская** — зеркало `_extracted/ritual_parser/`: исходники парсера лежат в корне репо (а не в подпапке `ritual_parser/`). Это сохраняет внутренние импорты (`from utils...`, `from parsers...`) без правок. На сервере содержимое корня разворачивается в `/home/ritual_parser/`, бот — в `/opt/ritual_admin_bot/`.
 
 ```
 parser_ritualb2b/                              # новый git-репо
@@ -359,15 +359,15 @@ parser_ritualb2b/                              # новый git-репо
 
 | Найти (везде кроме внутренних Python imports) | Заменить |
 |---|---|
-| `crimea_parser` | `ritual_parser` |
-| `Crimea Hotel Parser` | `Ritual B2B Parser` |
-| `parser_admin_bot` (директория, systemd, упоминания в комментариях) | `ritual_admin_bot` |
-| `crimea_email_finder` | `ritual_email_finder` |
-| `crimea_watchdog` | `ritual_watchdog` |
-| `crimea_archive` | `ritual_archive` |
-| `/home/crimea_parser/` | `/home/ritual_parser/` |
-| `/opt/parser_admin_bot/` (прод-путь бота; `/root/...` — устаревшая копия) | `/opt/ritual_admin_bot/` |
-| `crimea_bot` (systemd-юнит) | (удалить, не клонируется) |
+| `ritual_parser` | `ritual_parser` |
+| `Ritual B2B Parser` | `Ritual B2B Parser` |
+| `ritual_admin_bot` (директория, systemd, упоминания в комментариях) | `ritual_admin_bot` |
+| `ritual_email_finder` | `ritual_email_finder` |
+| `ritual_watchdog` | `ritual_watchdog` |
+| `ritual_archive` | `ritual_archive` |
+| `/home/ritual_parser/` | `/home/ritual_parser/` |
+| `/opt/ritual_admin_bot/` (прод-путь бота; `/root/...` — устаревшая копия) | `/opt/ritual_admin_bot/` |
+| `ritual_bot` (systemd-юнит) | (удалить, не клонируется) |
 
 **Внутренние Python imports не меняются** (например `from services.systemd import ...`, `from utils.storage import ...`) — структура пакетов одинаковая, переименовывается только корневой путь и systemd-метки.
 
@@ -381,7 +381,7 @@ Hotel-специфичные строковые литералы (HOTEL_KEYWORDS
 
 Тот же sprinthost: `212.116.115.150` (Ubuntu 24.04, 5.8 GB RAM + 2 GB swap, 67 GB диск).
 
-Изоляция от crimea_parser:
+Изоляция от ritual_parser:
 - отдельная папка `/home/ritual_parser/`
 - отдельная `dedup.db`
 - отдельные systemd-юниты с префиксом `ritual_`
@@ -392,11 +392,11 @@ Hotel-специфичные строковые литералы (HOTEL_KEYWORDS
 
 | Юнит | Когда | Длительность |
 |---|---|---|
-| `crimea_parser.timer` | Sun 03:00 MSK | 6-12 часов |
+| `ritual_parser.timer` | Sun 03:00 MSK | 6-12 часов |
 | `ritual_parser.timer` | **Mon 03:00 MSK** | 6-10 часов |
-| `crimea_archive.timer` | Mon 04:00 MSK | < 1 мин |
+| `ritual_archive.timer` | Mon 04:00 MSK | < 1 мин |
 | `ritual_archive.timer` | Mon 05:00 MSK | < 1 мин |
-| `crimea_watchdog.timer`, `ritual_watchdog.timer` | каждые 10 мин | < 1 сек |
+| `ritual_watchdog.timer`, `ritual_watchdog.timer` | каждые 10 мин | < 1 сек |
 
 Понедельник 03:00 для ritual — гарантированный свободный интервал после crimea и его архивации.
 
@@ -406,8 +406,8 @@ Hotel-специфичные строковые литералы (HOTEL_KEYWORDS
 - `TG_BOT_TOKEN` — новый бот (заказчик предоставил)
 - `TG_CHAT_ID` — новая группа (заказчик предоставил)
 - `GDRIVE_FOLDER_ID` — новая папка (заказчик предоставил)
-- `VK_TOKEN` — переиспользуется из crimea_parser
-- `GDRIVE_TOKEN` (token.json) и `credentials.json` — переиспользуются из crimea_parser
+- `VK_TOKEN` — переиспользуется из ritual_parser
+- `GDRIVE_TOKEN` (token.json) и `credentials.json` — переиспользуются из ritual_parser
 
 Все попадают в `/home/ritual_parser/.env` (chmod 600) при деплое через `_deploy_helper.py`. Никогда не в git.
 
@@ -523,17 +523,17 @@ GDrive: ссылка
 | VK_TOKEN протухнет | Health-check уже есть (наследуется из phase 9 crimea), TG-алерт на error_code 5/15/27/28 |
 | Я.Карты заблокируют новые регионы как Крым | Fallback на VK + поисковики (которые дают 60-70% базы) |
 | OOM при email_finder на 5K+ сайтов | swap 2GB + MemoryMax=3G + safe_browser recreate_context |
-| Конфликт ресурсов с crimea_parser | Разнесены по timer (Mon vs Sun), не запускать вручную одновременно |
+| Конфликт ресурсов с ritual_parser | Разнесены по timer (Mon vs Sun), не запускать вручную одновременно |
 | Малая база в Запорожье/Херсонщине | Принимаем — это новые регионы РФ, OSM/Wikipedia плохо размечены, основной сборщик — VK + Поиск |
 | Шум в данных | vk_filter + comment=needs_review + отдельная Excel-вкладка для ручной проверки |
-| Дубли с crimea_parser (один и тот же отель попал и в hotel-парсер и в ritual-парсер) | dedup.db изолирован, перекрёстные дубли не страшны (разная аудитория обзвона) |
+| Дубли с ritual_parser (один и тот же отель попал и в hotel-парсер и в ritual-парсер) | dedup.db изолирован, перекрёстные дубли не страшны (разная аудитория обзвона) |
 
 ---
 
 ## 10. Acceptance summary
 
 **Дизайн утверждён, если переход к плану реализации даёт:**
-- Полный клон `hotels_sbor_baza/_extracted/crimea_parser/` (+ `parser_admin_bot/`) в `C:\Users\user\Documents\GitHub\parser_ritualb2b` (плоская структура)
+- Полный клон `hotels_sbor_baza/_extracted/ritual_parser/` (+ `ritual_admin_bot/`) в `C:\Users\user\Documents\GitHub\parser_ritualb2b` (плоская структура)
 - Деплой на тот же сервер в `/home/ritual_parser/` и `/opt/ritual_admin_bot/`
 - Первый smoke-test зелёный
 - Первый полный прогон с приоритетом качества классификации (объём ≥ 800 — ориентир)

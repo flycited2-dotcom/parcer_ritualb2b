@@ -1,0 +1,11 @@
+[Unit]
+Description=Ritual Parser — еженедельная архивация result_*.csv
+
+[Timer]
+# Понедельник 04:00 MSK — после воскресного прогона парсера и email_finder.
+OnCalendar=Mon *-*-* 04:00:00
+Persistent=true
+Unit=ritual_archive.service
+
+[Install]
+WantedBy=timers.target

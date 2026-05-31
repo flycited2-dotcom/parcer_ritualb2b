@@ -1,0 +1,18 @@
+[Unit]
+Description=Ritual Parser Admin Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ritual_admin_bot
+EnvironmentFile=/opt/ritual_admin_bot/.env
+ExecStart=/opt/ritual_admin_bot/venv/bin/python /opt/ritual_admin_bot/bot.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/ritual_admin_bot.log
+StandardError=append:/var/log/ritual_admin_bot.log
+
+[Install]
+WantedBy=multi-user.target
