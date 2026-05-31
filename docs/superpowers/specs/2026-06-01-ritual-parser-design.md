@@ -1,14 +1,14 @@
 # Ritual B2B Parser — Design Spec
 
 > **Дата:** 2026-06-01
-> **Статус:** Утверждённый дизайн → переход к плану реализации
-> **Базируется на:** `crimea_parser` (репо `hotels_sbor_baza`), полный клон с переименованием
+> **Статус:** Утверждённый дизайн (ревизия 2: сверен с реальной базой, спорная зона исключена) → план реализации
+> **Базируется на:** рабочем crimea-парсере. Реальный код: `hotels_sbor_baza/_extracted/crimea_parser/` (парсер, версия новее снимка прода `_server_current`) + `hotels_sbor_baza/parser_admin_bot/` (aiogram-бот №2). Полный клон с переименованием.
 
 ---
 
 ## 1. Цель и контекст
 
-Создать парсер контактов компаний ритуальной/похоронной ниши в трёх регионах: **Республика Крым, Севастополь, Запорожская область, Херсонская область**. База нужна для B2B-обзвона/email-кампаний.
+Создать парсер контактов компаний ритуальной/похоронной ниши в четырёх субъектах РФ: **Республика Крым, г. Севастополь, Запорожская область, Херсонская область**. Собираем **только территории под фактическим контролем РФ** (см. 3.7). База нужна для B2B-обзвона/email-кампаний.
 
 Целевые типы бизнеса (по запросу заказчика):
 - ритуальные магазины
@@ -77,11 +77,12 @@ ritual_admin_bot.service             ├── ritual_parser.timer (Mon 03:00 MS
 - `parsers/avito.py` — отельные объявления, ban IP
 - `parsers/twogis.py` — Крым геоблок (опционально вернуть в фазе 2 для Запорожья/Херсонщины, если 2ГИС там открыт)
 - `parsers/gosreestr.py` — реестр гостиниц, NXDOMAIN с 2022
-- `crimea_bot.service` (бот №1 stdlib) — не клонируем
+- `crimea_bot.service` + папка `bot/` (бот №1 stdlib) — не клонируем
+- `hotel_lead_bot/` — отдельный CRM-проект в том же репо, к парсеру не относится
 
 ### Что адаптируется (правки конкретных функций)
 
-- `utils/categories.py` — `client_type`: ритуальное агентство / похоронное бюро / ритуальный магазин / мастерская памятников / кладбищенские услуги / флористика / прочее
+- `utils/categories.py` — функция `normalize(category)` (словари `CANONICAL`/`ALIASES`): заменяем отельные типы на client_type ритуала — ритуальное агентство / похоронное бюро / ритуальный магазин / мастерская памятников / кладбищенские услуги / флористика / прочее
 - `utils/geo_city.py` — `CITY_BBOXES`: +25 городов Запорожской и Херсонской областей
 - `parsers/vk_groups.py` — `VK_CITIES`, `QUERIES`, переименование HOTEL_* → RITUAL_*
 - `parsers/osm.py` — Overpass: `shop=funeral_directors`, `office=funeral_directors`, `amenity=funeral_hall`, `amenity=crematorium`, `craft=stonemason`
@@ -90,7 +91,7 @@ ritual_admin_bot.service             ├── ritual_parser.timer (Mon 03:00 MS
 - `parsers/yandex_maps.py` — `QUERIES` ритуальные
 - `parsers/search_engine.py` — `QUERIES` ритуальные
 - `parsers/crawler.py` — `HOTEL_TRIGGERS` → `RITUAL_TRIGGERS + FLORIST_TRIGGERS`
-- `parsers/vk_filter.py` — `RITUAL_KEYWORDS` + `FLORIST_KEYWORDS` + RITUAL_NOISE (минимальный)
+- `parsers/vk_filter.py` — уже есть `classify(name, activity) → hotel/noise/ambiguous`; заменяем `HOTEL_KEYWORDS` → `RITUAL_KEYWORDS`, добавляем `FLORIST_KEYWORDS`, урезаем NOISE до минимума. ⚠️ «цветы/цветочн/букет» переносим из NOISE в `FLORIST_KEYWORDS` (сейчас «цветы» стоит в noise), «свадебн» остаётся в noise
 - `utils/excel_export.py` — добавляет вкладки «Сводка», «Все ритуальные», «Флористика», «Требуют проверки», далее по городам
 
 ---
@@ -154,22 +155,11 @@ REGIONS = [
 ]
 ```
 
-### 3.7 Зона неопределённого контроля (de-facto под Украиной)
+### 3.7 Города под контролем Украины — НЕ парсим
 
-Не фильтруем на парсинге, помечаем в Excel-вкладке предупреждением. Конкретный список городов в `utils/geo_city.py:DISPUTED_CITIES`:
+По решению заказчика территории под фактическим контролем Украины из сбора **исключены полностью** (не помечаем — а вовсе не собираем). Это областные центры **Запорожье** и **Херсон**, а также правобережье Днепра (**Берислав**, **Покровка** и др.).
 
-```python
-DISPUTED_CITIES = (
-    "Запорожье",   # центр области, под Украиной
-    "Херсон",      # центр области, под Украиной
-    "Берислав",    # правый берег Днепра
-    "Покровка",    # правый берег
-)
-```
-
-Запись попадает в эту группу, если `city` ∈ `DISPUTED_CITIES` ИЛИ обнаружена эвристически по lat/lon вне известных RU-bbox.
-
-В `excel_export.py` отдельная Excel-вкладка «Зона под вопросом» или подсветка строк жёлтым в основной таблице — выберется при имплементации.
+Реализация: bbox-таблицы 3.2/3.3 и `VK_CITIES` содержат **только** города под контролем РФ — перечисленные города-исключения там просто отсутствуют. Никаких `DISPUTED_CITIES`, никакой отдельной вкладки «под вопросом» и подсветки. Если какой-то источник (OSM по общей bbox, поиск) случайно вернёт запись из этих городов — отсекаем по `geo_city` (город не распознан → не из целевого списка).
 
 ---
 
@@ -187,7 +177,7 @@ DISPUTED_CITIES = (
 | `флористика` | флористические магазины, цветочные |
 | `прочее` | fallback |
 
-Маппинг строка-категории → client_type через regex (как `normalize_category` в crimea).
+Маппинг строка-категории → client_type через словарь `ALIASES`/regex (функция `normalize()` в `categories.py`). Для ритуала client_type чаще определяется по ключевым словам в `vk_filter`/`crawler` — поле `category` у источников обычно пустое; `normalize()` используется для группировки и раскраски в Excel.
 
 ### 4.2 RITUAL_KEYWORDS (стемы для классификации)
 
@@ -242,6 +232,8 @@ RITUAL_NOISE = (
 ни тех, ни других, есть NOISE → skip
 ни тех, ни других, нет NOISE  → ambiguous, comment=needs_review
 ```
+
+> **Приоритет — качество (решение заказчика):** при сомнении запись идёт в `ambiguous`/`needs_review`, а не в чистые ритуальные. Лучше отправить лид на ручную проверку, чем впустить мусор в базу обзвона.
 
 ### 4.6 RITUAL_QUERIES (VK / поисковики / Я.Карты)
 
@@ -305,65 +297,63 @@ craft=stonemason   ← border-case: мастер по камню → ambiguous, 
 
 ## 5. Структура проекта
 
+Структура **плоская** — зеркало `_extracted/crimea_parser/`: исходники парсера лежат в корне репо (а не в подпапке `ritual_parser/`). Это сохраняет внутренние импорты (`from utils...`, `from parsers...`) без правок. На сервере содержимое корня разворачивается в `/home/ritual_parser/`, бот — в `/opt/ritual_admin_bot/`.
+
 ```
 parser_ritualb2b/                              # новый git-репо
 ├── ONBOARDING.md
 ├── tz_ritual_parser.docx                       # ТЗ заказчика (генерируем из дизайна)
 ├── _deploy_helper.py                           # paramiko-helper
 ├── .gitignore
+├── main.py                                      # ⭐ оркестратор (RUNNERS, enrich, merge, xlsx, gdrive)
+├── run_email_finder.py                          # добор контактов по master_all
+├── run_vk.py                                    # VK-добор (HTTP-only)
+├── deploy.sh, watchdog.sh
+├── requirements.txt, pytest.ini
+├── .env.example, .env.{tg,vk,gdrive}.example
 ├── docs/
 │   ├── HANDOFF_2026-06-01.md                   # стартовый handoff
 │   └── superpowers/specs/
 │       └── 2026-06-01-ritual-parser-design.md  # этот файл
-├── ritual_parser/                              # ⭐ исходники
-│   ├── main.py
-│   ├── deploy.sh
-│   ├── watchdog.sh
-│   ├── requirements.txt
-│   ├── pytest.ini
-│   ├── .env.example
-│   ├── .env.{tg,vk,gdrive}.example
-│   ├── parsers/
-│   │   ├── osm.py, wikidata.py, wikipedia.py
-│   │   ├── vk_groups.py, vk_filter.py, vk_email.py
-│   │   ├── yandex_maps.py, search_engine.py
-│   │   ├── crawler.py
-│   │   ├── email_finder.py
-│   │   └── site_finder.py
-│   ├── utils/
-│   │   ├── storage.py, browser.py, safe_browser.py
-│   │   ├── progress.py, dedup.py
-│   │   ├── geo_city.py, categories.py
-│   │   ├── http_retry.py, env_loader.py
-│   │   ├── telegram_notify.py, excel_export.py
-│   │   ├── merger.py, gdrive.py
-│   ├── scripts/
-│   │   ├── clean_garbage.py
-│   │   ├── archive_old.sh
-│   │   ├── fetch_vk_cities.py                  # 🆕 разовый
-│   │   └── cleanup_classification.py           # 🆕 аналог cleanup_vk.py
-│   ├── deploy/
-│   │   ├── ritual_parser.{service,timer}
-│   │   ├── ritual_email_finder.service
-│   │   ├── ritual_admin_bot.service
-│   │   ├── ritual_watchdog.{service,timer}
-│   │   ├── ritual_archive.{service,timer}
-│   │   └── logrotate-ritual_parser.conf
-│   └── tests/
-│       ├── conftest.py
-│       ├── test_normalize_phone.py
-│       ├── test_email_score.py
-│       ├── test_geo_city.py                    # дополнен ЗП/Хс
-│       ├── test_vk_clean_site.py
-│       ├── test_pick_address.py
-│       ├── test_storage_append.py
-│       ├── test_ritual_keywords.py             # 🆕
-│       └── test_extract_socials.py             # 🆕
-└── ritual_admin_bot/                            # ⭐ aiogram-бот
-    ├── bot.py
+├── parsers/
+│   ├── osm.py, wikidata.py, wikipedia.py
+│   ├── vk_groups.py, vk_filter.py, vk_email.py
+│   ├── yandex_maps.py, search_engine.py
+│   ├── crawler.py, email_finder.py, site_finder.py
+├── utils/
+│   ├── storage.py, browser.py, safe_browser.py
+│   ├── progress.py, dedup.py
+│   ├── geo_city.py, categories.py
+│   ├── http_retry.py, env_loader.py
+│   ├── telegram_notify.py, excel_export.py
+│   ├── merger.py, gdrive.py
+├── scripts/
+│   ├── clean_garbage.py, archive_old.sh
+│   ├── fetch_vk_cities.py                       # 🆕 разовый: VK city_id новых городов
+│   └── cleanup_classification.py               # 🆕 адаптация cleanup_vk.py
+├── deploy/
+│   ├── ritual_parser.{service,timer}
+│   ├── ritual_email_finder.service
+│   ├── ritual_admin_bot.service
+│   ├── ritual_watchdog.{service,timer}
+│   ├── ritual_archive.{service,timer}
+│   └── logrotate-ritual_parser.conf
+├── tests/
+│   ├── conftest.py
+│   ├── test_normalize_phone.py, test_email_score.py
+│   ├── test_geo_city.py                         # дополнен ЗП/Хс
+│   ├── test_vk_clean_site.py, test_pick_address.py
+│   ├── test_storage_append.py
+│   ├── test_ritual_keywords.py                  # 🆕
+│   └── test_extract_socials.py                  # 🆕
+└── ritual_admin_bot/                            # ⭐ aiogram-бот → прод /opt/ritual_admin_bot/
+    ├── bot.py, install.sh, requirements.txt
+    ├── ritual_admin_bot.service, .env.example
     ├── handlers/{commands.py, menu.py}
-    └── services/{auth.py, csv_finder.py, systemd.py}
+    └── services/{auth.py, csv_finder.py, systemd.py, drive.py, panel.py, progress.py, stats.py}
 ```
+
+Полную структуру бота (`drive/panel/progress/stats`) клонируем как есть — иначе отвалятся `/stats`, `/drive` и пульт-меню.
 
 ### Переименование (find-replace при копировании)
 
@@ -376,7 +366,7 @@ parser_ritualb2b/                              # новый git-репо
 | `crimea_watchdog` | `ritual_watchdog` |
 | `crimea_archive` | `ritual_archive` |
 | `/home/crimea_parser/` | `/home/ritual_parser/` |
-| `/root/parser_admin_bot/` | `/root/ritual_admin_bot/` |
+| `/opt/parser_admin_bot/` (прод-путь бота; `/root/...` — устаревшая копия) | `/opt/ritual_admin_bot/` |
 | `crimea_bot` (systemd-юнит) | (удалить, не клонируется) |
 
 **Внутренние Python imports не меняются** (например `from services.systemd import ...`, `from utils.storage import ...`) — структура пакетов одинаковая, переименовывается только корневой путь и systemd-метки.
@@ -448,7 +438,7 @@ GDrive: ссылка
 1. **Сводка** — цифры + распределение по client_type + по городам
 2. **Все ритуальные** — client_type ∈ ритуальные
 3. **Флористика** — client_type = флористика
-4. **Требуют проверки** — comment=needs_review + zone=disputed
+4. **Требуют проверки** — comment=needs_review (ambiguous на ручную проверку)
 5–N. По городам — фильтр по client_type через AutoFilter
 
 ---
@@ -477,11 +467,13 @@ GDrive: ссылка
 
 ### 7.3 Критерии приёмки полного прогона (~10 часов)
 
+> **Приоритет — качество классификации, а не объём** (решение заказчика). Объёмные пороги ниже — ориентир, а не блокер. Главный критерий: на 50 случайных записях из «Все ритуальные» ≥ 90% действительно ритуальные (корректный client_type, не мусор).
+
 **Пройдено:**
-- ✅ ≥ 800 уникальных записей в master_all
+- ✅ ≥ 800 уникальных записей в master_all (ориентир)
 - ✅ ритуальные ≥ 40%, флористика ≥ 10%, ambiguous ≤ 25%
 - ✅ phone ≥ 25%, email ≥ 12%
-- ✅ Все 4 региона представлены
+- ✅ Все 4 субъекта представлены (территории под контролем РФ)
 - ✅ XLSX книга с нужными вкладками
 - ✅ GDrive получил CSV+XLSX
 - ✅ Watchdog 0 алертов
@@ -541,9 +533,9 @@ GDrive: ссылка
 ## 10. Acceptance summary
 
 **Дизайн утверждён, если переход к плану реализации даёт:**
-- Полный клон crimea_parser в `C:\Users\user\Documents\GitHub\parser_ritualb2b`
-- Деплой на тот же сервер в `/home/ritual_parser/` и `/root/ritual_admin_bot/`
+- Полный клон `hotels_sbor_baza/_extracted/crimea_parser/` (+ `parser_admin_bot/`) в `C:\Users\user\Documents\GitHub\parser_ritualb2b` (плоская структура)
+- Деплой на тот же сервер в `/home/ritual_parser/` и `/opt/ritual_admin_bot/`
 - Первый smoke-test зелёный
-- Первый полный прогон даёт ≥ 800 уникальных записей с указанным распределением
+- Первый полный прогон с приоритетом качества классификации (объём ≥ 800 — ориентир)
 
 **После утверждения spec → переход к writing-plans skill для детального плана реализации.**
