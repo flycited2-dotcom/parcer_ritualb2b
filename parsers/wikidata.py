@@ -1,7 +1,8 @@
-"""Wikidata SPARQL: размещения в Крыму и Севастополе.
+"""Wikidata SPARQL: ритуальные организации в 4 регионах.
 
-Включает: hotel, resort, sanatorium, hostel, guest house, motel, etc.
-Возвращает: имя (ru), сайт, координаты, описание.
+Включает типы: funeral home / ритуальная служба / крематорий / мастерская.
+Возвращает: имя (ru), сайт, координаты, описание. Источник второстепенный
+(размеченных в Wikidata ритуальных объектов мало), но дешёвый.
 """
 import json
 import os
@@ -19,15 +20,16 @@ ENDPOINT = "https://query.wikidata.org/sparql"
 CACHE_DIR = os.path.join("output", "cache")
 CACHE_TTL_SECONDS = 7 * 24 * 3600  # 7 дней
 
-# P31 = instance of, P279 = subclass of, P17 = country, P131 = located in admin
-# Q15966495 = Crimea (subject of dispute), Q42959 = Sevastopol
-# Q27686 = hotel, Q907311 = resort, Q822402 = sanatorium, Q26529 = hostel,
-# Q1244442 = guest house, Q11707 = restaurant (skip), Q43229 = organization
+# P31 = instance of, P279 = subclass of, P131 = located in admin
+# Регионы: Q15966495 = Республика Крым, Q42959 = Севастополь,
+#          Q3697 = Запорожская обл., Q3699 = Херсонская обл.
+# Типы (?root): Q1530940/Q1149653/Q1326031 — funeral-классы (см. дизайн 3.6);
+#               Q318296 = крематорий. Коды стоит перепроверить fetch'ем.
 SPARQL_TEMPLATE = """
 SELECT DISTINCT ?item ?itemLabel ?typeLabel ?website WHERE {{
   ?item wdt:P31 ?type .
   ?type wdt:P279* ?root .
-  VALUES ?root {{ wd:Q27686 wd:Q907311 wd:Q822402 wd:Q26529 wd:Q1244442 }}
+  VALUES ?root {{ wd:Q1530940 wd:Q1149653 wd:Q1326031 wd:Q318296 }}
   ?item wdt:P131* wd:{region} .
   OPTIONAL {{ ?item wdt:P856 ?website . }}
   SERVICE wikibase:label {{ bd:serviceParam wikibase:language "ru,en". }}
@@ -35,7 +37,7 @@ SELECT DISTINCT ?item ?itemLabel ?typeLabel ?website WHERE {{
 LIMIT 400
 """
 
-REGIONS = ["Q15966495", "Q42959"]  # Республика Крым, Севастополь
+REGIONS = ["Q15966495", "Q42959", "Q3697", "Q3699"]
 
 
 def _cache_path(region: str) -> str:
@@ -107,15 +109,19 @@ def _val(b, k):
     return v.get("value", "")
 
 
-CITY_HINTS = ("Симферополь", "Ялта", "Севастополь", "Евпатория", "Феодосия",
-              "Керчь", "Алушта", "Судак", "Саки", "Бахчисарай")
+CITY_HINTS = (
+    "Симферополь", "Ялта", "Севастополь", "Евпатория", "Феодосия",
+    "Керчь", "Алушта", "Судак", "Саки", "Бахчисарай",
+    "Мелитополь", "Бердянск", "Энергодар", "Токмак", "Геническ",
+    "Новая Каховка", "Каховка", "Скадовск", "Алёшки",
+)
 
 
 def _detect_city(name: str) -> str:
     for c in CITY_HINTS:
         if c.lower() in name.lower():
             return c
-    return "Крым"
+    return ""
 
 
 async def run(context):
@@ -135,7 +141,7 @@ async def run(context):
             "phone": "",
             "email": "",
             "website": _val(b, "website"),
-            "category": _val(b, "typeLabel") or "размещение",
+            "category": _val(b, "typeLabel") or "ритуальные услуги",
             "source": "Wikidata",
             "parsed_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
         }

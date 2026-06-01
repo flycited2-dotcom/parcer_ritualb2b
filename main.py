@@ -12,8 +12,8 @@ from utils.storage import total, get_output_file, cross_source_merge
 from utils.telegram_notify import notify as tg_notify, checkpoint as tg_checkpoint
 from utils import progress
 from parsers import (
-    osm, wikidata, wikipedia, gosreestr, vk_groups,
-    yandex_maps, search_engine, avito, sutochno, ostrovok, twogis, crawler,
+    osm, wikidata, wikipedia, vk_groups,
+    yandex_maps, search_engine, crawler,
 )
 from parsers.email_finder import run_enrichment
 
@@ -24,15 +24,10 @@ RUNNERS = [
     ("OSM",                            osm.run,           "osm"),
     ("Wikidata",                       wikidata.run,      "wikidata"),
     ("Wikipedia",                      wikipedia.run,     "wikipedia"),
-    ("Госреестр Минэка",               gosreestr.run,     "gosreestr"),
     ("VK Groups",                      vk_groups.run,     "vk"),
     # Тяжёлые Chromium-источники
     ("Я.Карты",                        yandex_maps.run,   "yandex"),
     ("Поиск (Яндекс/Mail/Rambler/Bing)", search_engine.run, "search"),
-    ("2ГИС",                           twogis.run,        "2gis"),
-    ("Авито",                          avito.run,         "avito"),
-    ("Суточно.ру",                     sutochno.run,      "sutochno"),
-    ("Ostrovok",                       ostrovok.run,      "ostrovok"),
     # Crawler идёт последним — он опирается на уже собранные website
     ("Crawler",                        crawler.run,       "crawler"),
 ]
@@ -70,7 +65,7 @@ def _detect_resume() -> set[str]:
 
 async def main():
     print("=" * 60)
-    print("  CRIMEA HOTEL PARSER — запуск всех источников")
+    print("  RITUAL B2B PARSER — запуск всех источников")
     print("=" * 60)
 
     headless_env = os.getenv("HEADLESS", "1").lower()

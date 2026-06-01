@@ -189,6 +189,46 @@ def pick_phone(text: str) -> str:
     return normalize_phone(matches[0]) if matches else ""
 
 
+# --- Социальные сети: telegram / instagram / whatsapp / ok (дизайн 4.9) ---
+_TG_RE = re.compile(r"(?:t\.me/|tg://resolve\?domain=)([A-Za-z][\w_]{4,31})", re.IGNORECASE)
+_INST_RE = re.compile(r"instagram\.com/([A-Za-z][\w.]{1,29})", re.IGNORECASE)
+_WA_RE = re.compile(r"(?:wa\.me/|api\.whatsapp\.com/send\?phone=)(\+?\d{10,15})", re.IGNORECASE)
+_OK_RE = re.compile(r"ok\.ru/(?:group/)?([A-Za-z0-9][\w.]{2,29})", re.IGNORECASE)
+
+_TG_RESERVED = {"share", "joinchat", "addstickers", "iv", "proxy", "socks"}
+_INST_RESERVED = {"p", "reel", "reels", "explore", "stories", "accounts", "about"}
+_OK_RESERVED = {"group", "profile", "dk", "video", "games"}
+
+
+def extract_socials(text: str) -> dict:
+    """Найти соц-ссылки в тексте/HTML.
+
+    → dict с ключами tg/inst/wa/ok (присутствуют только найденные),
+    значения нормализованы: 'tg:@handle', 'inst:@handle', 'wa:+7...', 'ok:<name>'.
+    """
+    out: dict[str, str] = {}
+    if not text:
+        return out
+    m = _TG_RE.search(text)
+    if m and m.group(1).lower() not in _TG_RESERVED:
+        out["tg"] = "tg:@" + m.group(1)
+    m = _INST_RE.search(text)
+    if m and m.group(1).lower() not in _INST_RESERVED:
+        out["inst"] = "inst:@" + m.group(1)
+    m = _WA_RE.search(text)
+    if m:
+        out["wa"] = "wa:" + m.group(1)
+    m = _OK_RE.search(text)
+    if m and m.group(1).lower() not in _OK_RESERVED:
+        out["ok"] = "ok:" + m.group(1)
+    return out
+
+
+def socials_to_str(socials: dict) -> str:
+    """dict от extract_socials → строка для поля social ('; '-разделитель)."""
+    return "; ".join(socials[k] for k in ("tg", "inst", "wa", "ok") if socials.get(k))
+
+
 def _walk_json_for_address(obj) -> str:
     """Рекурсивный обход JSON-LD: ищет PostalAddress, возвращает 'street, locality'."""
     if isinstance(obj, dict):
@@ -385,8 +425,23 @@ async def _harvest_page(page, site_domain: str = "") -> tuple[str, str, str, str
     except Exception:
         pass
 
-    # 5) Social — отдельной попыткой
-    social = await _extract_social(page)
+    # 5) Social — DOM-ссылка (часто VK) + расширенный разбор HTML (tg/inst/wa/ok)
+    parts = []
+    link = await _extract_social(page)
+    if link:
+        parts.append(link)
+    try:
+        html_s = await page.content()
+        sd = extract_socials(html_s)
+        s_str = socials_to_str(sd)
+        if s_str:
+            parts.append(s_str)
+        # WhatsApp → phone, если телефон ещё не найден
+        if not phone and sd.get("wa"):
+            phone = normalize_phone(sd["wa"].split(":", 1)[1])
+    except Exception:
+        pass
+    social = "; ".join(dict.fromkeys(p for p in parts if p))
 
     return email, phone, address, social
 

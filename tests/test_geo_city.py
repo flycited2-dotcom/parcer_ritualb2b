@@ -26,3 +26,23 @@ def test_none_returns_empty():
     assert detect_city_by_coords(None, None) == ""
     assert detect_city_by_coords(44.5, None) == ""
     assert detect_city_by_coords(None, 34.1) == ""
+
+
+def test_melitopol():
+    # Запорожская обл., bbox 46.82-46.88 / 35.34-35.42
+    assert detect_city_by_coords(46.85, 35.38) == "Мелитополь"
+
+
+def test_genichesk():
+    # Херсонская обл. (левобережье), bbox 46.16-46.19 / 34.79-34.85
+    assert detect_city_by_coords(46.17, 34.82) == "Геническ"
+
+
+def test_novaya_kakhovka():
+    assert detect_city_by_coords(46.76, 33.37) == "Новая Каховка"
+
+
+def test_excluded_zaporizhzhia_city_not_mapped():
+    # Запорожье-город (спорная зона) намеренно НЕ в bbox → не определяется как
+    # конкретный город (возвращает "", запись не привязывается к РФ-городу).
+    assert detect_city_by_coords(47.83, 35.14) == ""

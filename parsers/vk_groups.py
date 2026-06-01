@@ -12,6 +12,7 @@ ENV: VK_TOKEN (user access_token со scope groups). Без токена — п�
 import json
 import os
 import re
+import re
 import time
 import urllib.parse
 from datetime import datetime
@@ -19,7 +20,8 @@ from urllib.parse import urlparse
 
 from utils.http_retry import http_request
 
-from parsers.vk_filter import classify as vk_classify
+from parsers.vk_filter import classify
+from utils.categories import normalize as vk_classify
 from utils.storage import save_item, normalize_phone
 
 API = "https://api.vk.com/method"
@@ -46,9 +48,13 @@ VK_CITIES = {
 }
 
 QUERIES = [
-    "отель", "гостиница", "пансионат", "санаторий",
-    "база отдыха", "дом отдыха", "гостевой дом", "гостевой комплекс",
-    "эллинг", "хостел", "апартаменты", "вилла", "глэмпинг",
+    "ритуальные услуги", "ритуальное агентство", "похоронное бюро",
+    "ритуальный магазин", "ритуальная атрибутика", "ритуальные товары",
+    "венки", "памятники на могилу", "гробы", "надгробия",
+    "ограды на могилу", "крематорий", "поминальные товары",
+    "мастерская памятников",
+    # флористика (попутная ниша)
+    "цветочный магазин", "доставка цветов",
 ]
 
 EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
@@ -160,6 +166,16 @@ def _pick_phone(contacts: list) -> str:
     return ""
 
 
+def _client_type(verdict: str, name: str, activity: str) -> str:
+    """client_type записи: детальный для ритуала, 'флористика', '' для ambiguous."""
+    if verdict == "флористика":
+        return "флористика"
+    if verdict == "ритуал":
+        ct = normalize(f"{name} {activity}")
+        return ct if ct != "прочее" else "ритуальное агентство"
+    return ""  # ambiguous → пусто; помечается needs_review
+
+
 async def run(context):
     """context не используется (HTTP-only)."""
     token = os.getenv("VK_TOKEN", "").strip()
@@ -232,7 +248,8 @@ async def run(context):
             if verdict == "noise":
                 skipped_noise += 1
                 continue
-            comment = "vk_review" if verdict == "ambiguous" else ""
+            comment = "needs_review" if verdict == "ambiguous" else ""
+            client_type = _client_type(verdict, name, activity)
             if verdict == "ambiguous":
                 flagged_ambiguous += 1
 
@@ -245,6 +262,7 @@ async def run(context):
                 "website": site,
                 "social": social,
                 "category": activity,
+                "client_type": client_type,
                 "comment": comment,
                 "source": "VK",
                 "parsed_at": datetime.now().strftime("%Y-%m-%d %H:%M"),

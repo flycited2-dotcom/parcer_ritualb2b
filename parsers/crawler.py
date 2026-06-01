@@ -10,7 +10,7 @@
 3. Из каждой посещённой страницы:
    - извлекаем phone/email/address (как email_finder)
    - извлекаем <title>/<h1> как потенциальное имя нового объекта (если на странице
-     есть гостиничные триггеры: «гостиница», «отель», «забронировать», «номера»)
+     есть ритуальные триггеры: «ритуальные услуги», «похоронное бюро», «памятники»)
 4. Ссылки на сторонние домены проверяем по эвристике «отельный сайт» —
    если домен не агрегатор и в title есть триггер → добавляем как seed-кандидат
    (но всё равно не больше MAX_TOTAL_PAGES).
@@ -39,13 +39,18 @@ HTTP_TIMEOUT = aiohttp.ClientTimeout(total=15)
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
 
-HOTEL_TRIGGERS = (
-    "отель", "гостиниц", "пансионат", "санатори", "база отдыха",
-    "дом отдыха", "гостевой дом", "хостел", "апарт", "вилла",
-    "эллинг", "глэмпинг", "кемпинг", "забронировать", "номера",
-    "номерной фонд", "проживание", "размещение",
-    "hotel", "resort", "villa", "guesthouse", "hostel", "spa",
+RITUAL_TRIGGERS = (
+    "ритуал", "похорон", "погреб", "венк", "гроб", "надгроб",
+    "памятник", "кладбищ", "кремац", "кремат", "мемориал",
+    "усопш", "отпеван", "поминк", "поминальн", "траурн", "эпитафи",
+    "ритуальные услуги", "организация похорон",
 )
+
+FLORIST_TRIGGERS = (
+    "флорист", "цветочн", "букет", "доставка цветов",
+)
+
+ALL_TRIGGERS = RITUAL_TRIGGERS + FLORIST_TRIGGERS
 
 # Интересные пути — приоритет в очереди обхода
 INTERESTING_PATHS_RE = re.compile(
@@ -73,9 +78,9 @@ def _strip(s: str) -> str:
     return WS_RE.sub(" ", s).strip()
 
 
-def _has_hotel_trigger(text: str) -> bool:
+def _has_ritual_trigger(text: str) -> bool:
     low = (text or "").lower()
-    return any(t in low for t in HOTEL_TRIGGERS)
+    return any(t in low for t in ALL_TRIGGERS)
 
 
 def _load_seeds_from_csv(path: str) -> list[str]:
@@ -209,7 +214,7 @@ async def _crawl_domain(session: aiohttp.ClientSession, origin: str,
     best_phone = ""
     best_email = ""
     best_address = ""
-    has_hotel_trigger = False
+    has_trigger = False
 
     while queue and pages_in_domain < MAX_PAGES_PER_DOMAIN \
             and total_counter[0] < MAX_TOTAL_PAGES:
@@ -224,9 +229,9 @@ async def _crawl_domain(session: aiohttp.ClientSession, origin: str,
         if not html:
             continue
 
-        # Триггер «отельности» хоть на одной странице → засчитываем домен
-        if not has_hotel_trigger and _has_hotel_trigger(html[:8000]):
-            has_hotel_trigger = True
+        # Триггер «ритуальности» хоть на одной странице → засчитываем домен
+        if not has_trigger and _has_ritual_trigger(html[:8000]):
+            has_trigger = True
 
         # Имя — приоритет: главная (первая успешная), затем /о-нас если на главной не нашли
         if not main_name:
@@ -253,14 +258,14 @@ async def _crawl_domain(session: aiohttp.ClientSession, origin: str,
                 elif len(queue) < MAX_PAGES_PER_DOMAIN * 2:
                     queue.append(link)
 
-    # Запись только если: есть имя + домен похож на отельный
-    if not main_name or not has_hotel_trigger:
+    # Запись только если: есть имя + домен похож на ритуальный/флористический
+    if not main_name or not has_trigger:
         return 0
 
     city = _detect_city_from_text(best_address or main_name)
-    cat = "размещение"
+    cat = "ритуальные услуги"
     low_name = main_name.lower()
-    for trig in HOTEL_TRIGGERS:
+    for trig in ALL_TRIGGERS:
         if trig in low_name:
             cat = trig
             break

@@ -41,7 +41,7 @@ async def _block_strangers(message: Message) -> None:
 @router.message(Command("start", "help"))
 async def cmd_help(m: Message) -> None:
     text = (
-        "<b>Управление парсером Crimea Hotels</b>\n\n"
+        "<b>Управление Ritual B2B Parser</b>\n\n"
         "/menu — пульт на кнопках\n\n"
         "<b>Запуск</b>\n"
         "/run — полный прогон\n"

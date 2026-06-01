@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 menu_router = Router()
 
 _OUTPUT_DIR = os.path.join(os.getenv("PARSER_DIR", "/home/ritual_parser"), "output")
-_PANEL = "<b>Пульт управления Crimea Hotels</b>\nВыбери раздел:"
+_PANEL = "<b>Пульт управления Ritual B2B Parser</b>\nВыбери раздел:"
 
 
 def _files_kb() -> InlineKeyboardMarkup | None:

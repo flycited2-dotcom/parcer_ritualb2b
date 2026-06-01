@@ -1,6 +1,6 @@
-"""OpenStreetMap Overpass API: tourism-объекты по полигону Крыма.
+"""OpenStreetMap Overpass API: ритуальные объекты по полигону 4 регионов.
 
-Один HTTP-запрос — JSON со всеми node/way/relation, у которых tourism=hotel|guest_house|...
+Один HTTP-запрос — JSON со всеми node/way/relation funeral-тегов.
 В тегах напрямую: name, phone, email, website, addr:*.
 """
 import json
@@ -21,19 +21,24 @@ OVERPASS_ENDPOINTS = [
     "https://lz4.overpass-api.de/api/interpreter",
 ]
 
-# Полигон: Крымский полуостров + Севастополь, с запасом
-BBOX = "44.0,32.0,46.5,37.0"
+# Полигон: Крым + Севастополь + Запорожская + Херсонская обл., с запасом
+BBOX = "44.0,32.0,48.0,37.5"
 
 QUERY = f"""
-[out:json][timeout:90];
+[out:json][timeout:120];
 (
-  node["tourism"~"^(hotel|guest_house|hostel|apartment|motel|chalet|camp_site|alpine_hut|wilderness_hut|caravan_site|resort)$"]({BBOX});
-  way["tourism"~"^(hotel|guest_house|hostel|apartment|motel|chalet|camp_site|alpine_hut|wilderness_hut|caravan_site|resort)$"]({BBOX});
-  relation["tourism"~"^(hotel|guest_house|hostel|apartment|motel|chalet|camp_site|alpine_hut|wilderness_hut|caravan_site|resort)$"]({BBOX});
-  node["amenity"="boarding_house"]({BBOX});
-  way["amenity"="boarding_house"]({BBOX});
-  node["leisure"~"^(resort|sanatorium)$"]({BBOX});
-  way["leisure"~"^(resort|sanatorium)$"]({BBOX});
+  node["shop"="funeral_directors"]({BBOX});
+  way["shop"="funeral_directors"]({BBOX});
+  node["office"="funeral_directors"]({BBOX});
+  way["office"="funeral_directors"]({BBOX});
+  node["amenity"="funeral_hall"]({BBOX});
+  way["amenity"="funeral_hall"]({BBOX});
+  node["amenity"="crematorium"]({BBOX});
+  way["amenity"="crematorium"]({BBOX});
+  node["craft"="stonemason"]({BBOX});
+  way["craft"="stonemason"]({BBOX});
+  node["shop"="florist"]({BBOX});
+  way["shop"="florist"]({BBOX});
 );
 out center tags;
 """
@@ -44,22 +49,21 @@ CITY_HINTS = (
     "Коктебель", "Партенит", "Гурзуф", "Новый Свет", "Форос",
     "Симеиз", "Алупка", "Ливадия", "Массандра", "Мисхор",
     "Канака", "Орджоникидзе", "Щёлкино", "Морское", "Малореченское",
+    # Запорожская обл. (под контролем РФ)
+    "Мелитополь", "Бердянск", "Энергодар", "Токмак", "Васильевка",
+    "Каменка-Днепровская", "Приморск", "Молочанск", "Пологи", "Куйбышево",
+    # Херсонская обл. (левобережье, под контролем РФ)
+    "Геническ", "Новая Каховка", "Каховка", "Скадовск", "Алёшки",
+    "Голая Пристань", "Чаплинка", "Новотроицкое", "Великая Лепетиха",
 )
 
+# tag value → человекочитаемая category (далее normalize() → client_type)
 CATEGORY_MAP = {
-    "hotel": "отель",
-    "guest_house": "гостевой дом",
-    "hostel": "хостел",
-    "apartment": "апартаменты",
-    "motel": "мотель",
-    "chalet": "шале",
-    "camp_site": "кемпинг",
-    "alpine_hut": "приют",
-    "wilderness_hut": "приют",
-    "caravan_site": "автокемпинг",
-    "resort": "курорт",
-    "boarding_house": "пансионат",
-    "sanatorium": "санаторий",
+    "funeral_directors": "ритуальные услуги",
+    "funeral_hall": "похоронное бюро",
+    "crematorium": "крематорий",
+    "stonemason": "мастерская памятников",
+    "florist": "цветочный магазин",
 }
 
 
@@ -94,8 +98,8 @@ def _detect_city(tags: dict, lat: float | None = None, lon: float | None = None)
     by_coords = detect_city_by_coords(lat, lon)
     if by_coords:
         return by_coords
-    # 4. ничего не сработало — общий регион
-    return "Крым"
+    # 4. ничего не сработало — пусто (запись вне целевых городов отфильтруется)
+    return ""
 
 
 def _build_address(tags: dict) -> str:
@@ -117,11 +121,11 @@ def _build_address(tags: dict) -> str:
 
 
 def _category(tags: dict) -> str:
-    for k in ("tourism", "amenity", "leisure"):
+    for k in ("shop", "office", "amenity", "craft"):
         v = tags.get(k)
         if v and v in CATEGORY_MAP:
             return CATEGORY_MAP[v]
-    return "размещение"
+    return "ритуальные услуги"
 
 
 def _website(tags: dict) -> str:

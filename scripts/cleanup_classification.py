@@ -1,11 +1,11 @@
-"""Retro-чистка master_all.csv от VK-шума.
+"""Retro-чистка master_all.csv по vk_filter (ритуал / флористика / noise / ambiguous).
 
 Применяет parsers.vk_filter.classify к VK-записям master_all.csv.
 По умолчанию dry-run: печатает разбивку и примеры.
 С --apply:
-  1. Делает backup: master_all.csv.bak.<timestamp>
-  2. Перезаписывает master_all.csv без noise; ambiguous остаются с comment='vk_review'
-  3. Пишет output/master_all_noise.csv — все удалённые noise-записи для аудита.
+  1. Backup: master_all.csv.bak.<timestamp>
+  2. Перезаписывает master_all.csv без noise; ambiguous остаются с comment='needs_review'
+  3. Пишет output/master_all_noise.csv — удалённые noise-записи для аудита.
 """
 import csv
 import os
@@ -13,10 +13,12 @@ import shutil
 import sys
 from datetime import datetime
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT)
 from parsers.vk_filter import classify  # noqa: E402
+from utils.categories import normalize  # noqa: E402
 
-OUTPUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
+OUTPUT = os.path.join(_ROOT, "output")
 MASTER = os.path.join(OUTPUT, "master_all.csv")
 NOISE = os.path.join(OUTPUT, "master_all_noise.csv")
 
@@ -40,13 +42,20 @@ def _write(path: str, rows: list[dict], fields: list[str], delim: str) -> None:
         w.writerows(rows)
 
 
+def _client_type(verdict: str, name: str, activity: str) -> str:
+    if verdict == "флористика":
+        return "флористика"
+    ct = normalize(f"{name} {activity}")
+    return ct if ct != "прочее" else "ритуальное агентство"
+
+
 def main(apply: bool = False) -> None:
     if not os.path.exists(MASTER):
         print(f"Не нашёл {MASTER}")
         return
 
     rows, fields, delim = _read(MASTER)
-    vk_total = noise = ambiguous = hotel = 0
+    vk_total = noise = ambiguous = clean = 0
     noise_rows: list[dict] = []
     keep_rows: list[dict] = []
 
@@ -56,8 +65,10 @@ def main(apply: bool = False) -> None:
             continue
         vk_total += 1
         v = classify(r.get("name", ""), r.get("category", ""))
-        if v == "hotel":
-            hotel += 1
+        if v in ("ритуал", "флористика"):
+            clean += 1
+            if not (r.get("client_type") or "").strip():
+                r["client_type"] = _client_type(v, r.get("name", ""), r.get("category", ""))
             keep_rows.append(r)
         elif v == "noise":
             noise += 1
@@ -65,14 +76,14 @@ def main(apply: bool = False) -> None:
         else:  # ambiguous
             ambiguous += 1
             if not (r.get("comment") or "").strip():
-                r["comment"] = "vk_review"
+                r["comment"] = "needs_review"
             keep_rows.append(r)
 
     print(f"Всего записей в master_all: {len(rows)}")
     print(f"VK всего: {vk_total}")
-    print(f"  hotel:     {hotel}")
-    print(f"  noise:     {noise}  ← удалятся при --apply")
-    print(f"  ambiguous: {ambiguous}  ← остаются, помечаются comment=vk_review")
+    print(f"  ритуал/флористика: {clean}")
+    print(f"  noise:             {noise}  ← удалятся при --apply")
+    print(f"  ambiguous:         {ambiguous}  ← остаются, помечаются comment=needs_review")
     print(f"После очистки: {len(keep_rows)}")
 
     if not apply:
@@ -80,7 +91,7 @@ def main(apply: bool = False) -> None:
         for r in noise_rows[:15]:
             n = (r.get("name") or "")[:42]
             a = (r.get("category") or "")[:30]
-            print(f"  {n:<42} | activity={a}")
+            print(f"  {n:<42} | category={a}")
         print("\nDry-run. Запусти с --apply чтобы применить.")
         return
 

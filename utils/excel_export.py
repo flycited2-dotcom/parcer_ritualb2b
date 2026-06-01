@@ -1,11 +1,13 @@
 """CSV → XLSX с вкладками по городам, форматированием, кликабельными контактами.
 
 Структура книги:
-  «Сводка»       — статистика по источникам/городам/типам клиентов
-  «Крым»         — общий полный список всех записей (фильтр + поиск)
-  <Город>        — отдельный лист на каждый город с ≥5 записями
-  «Остальные»    — города с <5 записями, собраны вместе
-  «Без контактов» — записи без phone и без email (для ручного добивания)
+  «Сводка»          — статистика по источникам/городам/типам клиентов
+  «Все ритуальные»  — все записи, кроме флористики
+  «Флористика»      — client_type = флористика
+  «Требуют проверки» — comment содержит needs_review (ambiguous)
+  <Город>           — отдельный лист на каждый город с ≥5 записями
+  «Остальные»       — города с <5 записями, собраны вместе
+  «Без контактов»   — записи без phone и без email (для ручного добивания)
 
 Сортировка строк в каждом листе: сначала записи с email, затем с телефоном,
 внутри — по названию (А→Я).
@@ -43,21 +45,13 @@ CSV_FIELD_ORDER = [
 
 # Заливка строки по client_type
 FILL_BY_TYPE = {
-    "отель":         "DCEEFB",  # голубой
-    "гостиница":     "DCEEFB",
-    "апарт-отель":   "E2D9F3",
-    "апартаменты":   "E2D9F3",
-    "пансионат":     "DCFCE7",  # зелёный
-    "санаторий":     "FEF3C7",  # жёлтый
-    "база отдыха":   "FFF7ED",
-    "дом отдыха":    "FFF7ED",
-    "гостевой дом":  "FEF3C7",
-    "хостел":        "F3F4F6",  # серый
-    "эллинг":        "FFE4E6",
-    "глэмпинг":      "DCFCE7",
-    "кемпинг":       "DCFCE7",
-    "мотель":        "F3F4F6",
-    "прочее":        "FFFFFF",
+    "ритуальное агентство":  "DCEEFB",  # голубой
+    "похоронное бюро":       "E2D9F3",  # сиреневый
+    "ритуальный магазин":    "DCFCE7",  # зелёный
+    "мастерская памятников": "FEF3C7",  # жёлтый
+    "кладбищенские услуги":  "FFE4E6",  # розовый
+    "флористика":            "FFF7ED",  # персиковый
+    "прочее":                "FFFFFF",
 }
 
 # Заливка для шапки и стилевые заголовки
@@ -67,12 +61,12 @@ HEADER_FONT = Font(bold=True, color="FFFFFF")
 # Цвет источника (для бейджа в колонке Источник)
 SOURCE_FONT_COLOR = {
     "OSM": "1E40AF",         # синий
+    "VK": "2563EB",          # ярко-синий
     "Я.Карты": "B91C1C",     # красный
-    "2ГИС": "047857",        # зелёный
-    "Авито": "C2410C",       # оранжевый
-    "Суточно.ру": "9333EA",  # фиолетовый
-    "Ostrovok": "0F766E",    # бирюзовый
+    "Поиск": "047857",       # зелёный
+    "Wikipedia": "9333EA",   # фиолетовый
     "Wikidata": "374151",    # серый
+    "Crawler": "C2410C",     # оранжевый
 }
 
 NO_CONTACT_FILL = PatternFill("solid", fgColor="FECACA")  # светло-красный
@@ -254,9 +248,22 @@ def build_xlsx(csv_path: str, xlsx_path: str | None = None) -> str | None:
     ws_summary.title = "Сводка"
     _write_summary(ws_summary, rows, csv_path)
 
-    GENERAL_SHEET = "Крым"
-    ws_all = wb.create_sheet(GENERAL_SHEET)
-    _write_sheet(ws_all, rows)
+    # Все ритуальные (всё, кроме флористики) и Флористика — отдельными листами
+    ritual_rows = [r for r in rows if (r.get("client_type") or "").lower() != "флористика"]
+    florist_rows = [r for r in rows if (r.get("client_type") or "").lower() == "флористика"]
+
+    ws_ritual = wb.create_sheet("Все ритуальные")
+    _write_sheet(ws_ritual, ritual_rows)
+
+    if florist_rows:
+        ws_florist = wb.create_sheet("Флористика")
+        _write_sheet(ws_florist, florist_rows)
+
+    # Требуют проверки — comment содержит needs_review (ambiguous-классификация)
+    review_rows = [r for r in rows if "review" in (r.get("comment") or "").lower()]
+    if review_rows:
+        ws_review = wb.create_sheet("Требуют проверки")
+        _write_sheet(ws_review, review_rows)
 
     # Группа по городам — отдельный лист на каждый; мелкие города → «Остальные»
     MIN_CITY_ROWS = 5
@@ -271,13 +278,9 @@ def build_xlsx(csv_path: str, xlsx_path: str | None = None) -> str | None:
         if len(by_city[city]) < MIN_CITY_ROWS:
             others.extend(by_city[city])
             continue
-        label = city
-        # «Крым» как город = регион без уточнения — не путать с общим листом
-        if _safe_sheet_name(city) == GENERAL_SHEET:
-            label = f"{city} (не уточнён)"
-        sheet_name = _safe_sheet_name(label)
+        sheet_name = _safe_sheet_name(city)
         if sheet_name in wb.sheetnames:
-            sheet_name = _safe_sheet_name(f"{label}_2")
+            sheet_name = _safe_sheet_name(f"{city}_2")
         ws = wb.create_sheet(sheet_name)
         _write_sheet(ws, by_city[city])
 
