@@ -46,7 +46,7 @@ async def cmd_help(m: Message) -> None:
         "<b>Запуск</b>\n"
         "/run — полный прогон\n"
         "/run_emails — email_finder по master_all (вся база)\n"
-        "/run_source <name> — один источник "
+        "/run_source &lt;name&gt; — один источник "
         f"({', '.join(VALID_SOURCES)})\n"
         "/stop — остановить текущий прогон\n\n"
         "<b>Информация</b>\n"

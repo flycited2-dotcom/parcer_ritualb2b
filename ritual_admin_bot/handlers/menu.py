@@ -80,7 +80,7 @@ async def _edit(cb: CallbackQuery, text: str, kb, preview: bool = False) -> None
 
 @menu_router.callback_query(F.data.startswith("menu:"))
 async def on_menu(cb: CallbackQuery) -> None:
-    if cb.from_user.id not in ADMIN_IDS:
+    if not is_admin(cb.message.chat.id):
         await cb.answer()
         return
     action = cb.data.split(":", 1)[1]
