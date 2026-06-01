@@ -23,7 +23,10 @@ def _connect() -> sqlite3.Connection:
     if _conn is not None:
         return _conn
     os.makedirs(os.path.dirname(DEDUP_PATH), exist_ok=True)
-    _conn = sqlite3.connect(DEDUP_PATH, check_same_thread=False, timeout=10.0)
+    # timeout/busy_timeout — чтобы при параллельной записи (основной прогон + VK-добор)
+    # соединение ждало освобождения блокировки, а не падало с "database is locked".
+    _conn = sqlite3.connect(DEDUP_PATH, check_same_thread=False, timeout=60.0)
+    _conn.execute("PRAGMA busy_timeout=60000")
     _conn.execute("""
         CREATE TABLE IF NOT EXISTS seen (
             name_norm TEXT NOT NULL,

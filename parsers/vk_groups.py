@@ -12,7 +12,6 @@ ENV: VK_TOKEN (user access_token со scope groups). Без токена — п�
 import json
 import os
 import re
-import re
 import time
 import urllib.parse
 from datetime import datetime
@@ -20,8 +19,8 @@ from urllib.parse import urlparse
 
 from utils.http_retry import http_request
 
-from parsers.vk_filter import classify
-from utils.categories import normalize as vk_classify
+from parsers.vk_filter import classify as vk_classify
+from utils.categories import normalize
 from utils.storage import save_item, normalize_phone
 
 API = "https://api.vk.com/method"
