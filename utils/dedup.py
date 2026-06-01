@@ -27,6 +27,12 @@ def _connect() -> sqlite3.Connection:
     # соединение ждало освобождения блокировки, а не падало с "database is locked".
     _conn = sqlite3.connect(DEDUP_PATH, check_same_thread=False, timeout=60.0)
     _conn.execute("PRAGMA busy_timeout=60000")
+    # WAL: писатель не блокирует читателей, конкурентная запись (основной прогон + VK-добор)
+    # сериализуется быстро — снимает большинство "database is locked".
+    try:
+        _conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError:
+        pass
     _conn.execute("""
         CREATE TABLE IF NOT EXISTS seen (
             name_norm TEXT NOT NULL,
