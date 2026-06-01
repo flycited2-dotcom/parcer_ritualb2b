@@ -36,9 +36,11 @@ def load_all_env(base_dir: str | None = None) -> list[str]:
             load_dotenv(path, override=True)
             loaded.append(name)
             seen.add(path)
-    # потом любые дополнительные .env.* (например .env.crawler), не из списка
+    # потом любые дополнительные .env.* (например .env.crawler), не из списка.
+    # ВАЖНО: пропускаем шаблоны (.example/.sample/.template) — иначе их плейсхолдеры
+    # с override=True затирают реальные секреты из .env.
     for path in sorted(glob.glob(os.path.join(cwd, ".env.*"))):
-        if path in seen:
+        if path in seen or path.endswith((".example", ".sample", ".template")):
             continue
         load_dotenv(path, override=True)
         loaded.append(os.path.basename(path))
