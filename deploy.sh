@@ -24,6 +24,8 @@ LOG_FILE="/tmp/ritual_parser_deploy.log"
 : > "$LOG_FILE"
 SYSTEMD_SERVICE="/etc/systemd/system/${SERVICE_NAME}.service"
 SYSTEMD_TIMER="/etc/systemd/system/${SERVICE_NAME}.timer"
+HOTELS_ENV="/home/crimea_parser/.env"      # источник VK_TOKEN/GDrive (тот же сервер)
+HOTELS_TOKEN="/home/crimea_parser/token.json"
 
 log() { echo -e "${CYAN}[$(date '+%H:%M:%S')]${NC} $1" | tee -a "$LOG_FILE"; }
 ok()  { echo -e "${GREEN}[OK]${NC} $1" | tee -a "$LOG_FILE"; }
@@ -70,7 +72,24 @@ else
     ok "Файлы скопированы"
 fi
 
-# ── 4. ПРОВЕРКА PYTHON ───────────────────────────────────────
+# - 3b. .env: создаём и подтягиваем VK_TOKEN/GDrive из парсера отелей -
+log "Настройка .env..."
+if [ ! -f "$DEPLOY_DIR/.env" ] && [ -f "$DEPLOY_DIR/.env.example" ]; then
+    cp "$DEPLOY_DIR/.env.example" "$DEPLOY_DIR/.env"
+    warn ".env создан из .env.example - заполни TG_BOT_TOKEN/TG_CHAT_ID/GDRIVE_FOLDER_ID"
+fi
+if [ -f "$HOTELS_ENV" ]; then
+    VK_LINE=$(grep "^VK_TOKEN=" "$HOTELS_ENV" 2>/dev/null || true)
+    [ -n "$VK_LINE" ] && sed -i "s|^VK_TOKEN=.*|$VK_LINE|" "$DEPLOY_DIR/.env" && ok "VK_TOKEN взят из $HOTELS_ENV"
+    GD_LINE=$(grep "^GDRIVE_CREDENTIALS=" "$HOTELS_ENV" 2>/dev/null || true)
+    [ -n "$GD_LINE" ] && sed -i "s|^GDRIVE_CREDENTIALS=.*|$GD_LINE|" "$DEPLOY_DIR/.env" || true
+fi
+if [ -f "$HOTELS_TOKEN" ]; then
+    sed -i "s|^GDRIVE_TOKEN=.*|GDRIVE_TOKEN=$HOTELS_TOKEN|" "$DEPLOY_DIR/.env"
+    ok "GDRIVE_TOKEN -> $HOTELS_TOKEN"
+fi
+
+# - 4. ПРОВЕРКА PYTHON
 log "Проверка Python..."
 if ! command -v $PYTHON_BIN &>/dev/null; then
     log "Устанавливаем Python 3..."

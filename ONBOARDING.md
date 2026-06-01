@@ -54,8 +54,9 @@ python scripts/fetch_vk_cities.py   # разово: VK city_id для город
 - ⚠️ **НЕ запускать одновременно с crimea** (общий Chromium → OOM, RAM 5.8 ГБ)
 - ⚠️ файлы из Windows: на сервере `sed -i 's/\r$//'` на `.sh`
 
-`.env` (chmod 600): `TG_BOT_TOKEN`, `TG_CHAT_ID`, `VK_TOKEN`, `GDRIVE_FOLDER_ID`,
-`GDRIVE_TOKEN`, `GDRIVE_CREDENTIALS`. **Секреты — не в git.**
+`.env` (chmod 600): `deploy.sh` автоматически подтягивает `VK_TOKEN`/`GDRIVE_TOKEN`/`GDRIVE_CREDENTIALS`
+из `/home/crimea_parser/.env`; вручную заполнить `TG_BOT_TOKEN`, `TG_CHAT_ID`, `GDRIVE_FOLDER_ID`.
+**Секреты — не в git.**
 
 ## Управление через TG-бот
 
