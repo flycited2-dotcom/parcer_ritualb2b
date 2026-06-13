@@ -309,25 +309,38 @@ def build_xlsx(csv_path: str, xlsx_path: str | None = None) -> str | None:
 
     used_names = {"Сводка"}
 
-    ritual_rows = [r for r in rows if (r.get("client_type") or "").lower() != "флористика"]
+    def _is_review(r: dict) -> bool:
+        return "review" in (r.get("comment") or "").lower()
+
     florist_rows = [r for r in rows if (r.get("client_type") or "").lower() == "флористика"]
+    review_rows = [r for r in rows if _is_review(r)
+                   and (r.get("client_type") or "").lower() != "флористика"]
+    # Главный лист обзвона — подтверждённый ритуал: не флористика и НЕ ambiguous.
+    # Ambiguous (needs_review) уходят в отдельный лист, чтобы не мусорить обзвон.
+    ritual_rows = [r for r in rows
+                   if (r.get("client_type") or "").lower() != "флористика"
+                   and not _is_review(r)]
 
     name = _safe_sheet_name("Все ритуальные", used_names)
-    _write_sheet(wb.create_sheet(name), "Все ритуальные (кроме флористики)", ritual_rows)
+    _write_sheet(wb.create_sheet(name), "Все ритуальные (подтверждённые)", ritual_rows)
 
     if florist_rows:
         name = _safe_sheet_name("Флористика", used_names)
         _write_sheet(wb.create_sheet(name), "Флористика", florist_rows)
 
-    review_rows = [r for r in rows if "review" in (r.get("comment") or "").lower()]
     if review_rows:
         name = _safe_sheet_name("Требуют проверки", used_names)
-        _write_sheet(wb.create_sheet(name), "Требуют ручной проверки", review_rows)
+        _write_sheet(wb.create_sheet(name),
+                     "Требуют ручной проверки (VK, неоднозначные)", review_rows)
+
+    # По городам и «без контактов» — только подтверждённые (ambiguous живут
+    # лишь в «Требуют проверки»), чтобы городские листы были чистым обзвоном.
+    core_rows = [r for r in rows if not _is_review(r)]
 
     # По городам: отдельный лист на каждый с ≥5 записями, мелкие → «Остальные»
     MIN_CITY_ROWS = 5
     by_city: dict[str, list[dict]] = defaultdict(list)
-    for r in rows:
+    for r in core_rows:
         city = (r.get("city") or "Не указан").strip() or "Не указан"
         by_city[city].append(r)
 
@@ -343,7 +356,7 @@ def build_xlsx(csv_path: str, xlsx_path: str | None = None) -> str | None:
         name = _safe_sheet_name("Остальные", used_names)
         _write_sheet(wb.create_sheet(name), "Остальные города (<5 записей)", others)
 
-    no_contacts = [r for r in rows
+    no_contacts = [r for r in core_rows
                    if not (r.get("phone") or "").strip()
                    and not (r.get("email") or "").strip()]
     if no_contacts:
