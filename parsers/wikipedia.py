@@ -32,8 +32,15 @@ CITY_HINTS = (
     "Керчь", "Алушта", "Судак", "Саки", "Бахчисарай",
     "Коктебель", "Партенит", "Гурзуф", "Новый Свет", "Форос",
     "Алупка", "Ливадия", "Мисхор", "Симеиз", "Массандра",
+    "Джанкой", "Красноперекопск", "Армянск", "Белогорск", "Старый Крым",
     "Мелитополь", "Бердянск", "Энергодар", "Токмак", "Геническ",
     "Новая Каховка", "Каховка", "Скадовск", "Алёшки",
+)
+
+# Маркер региона в тексте статьи — без него страница не наша (категории
+# «Похоронные бюро»/«Крематории России» общероссийские и общемировые).
+REGION_HINTS = CITY_HINTS + (
+    "Крым", "Севастопол", "Запорожск", "Херсонск", "Таврич",
 )
 
 
@@ -91,10 +98,22 @@ EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
 
 
 def _detect_city(text: str) -> str:
+    """Город из текста. Пустая строка = не наш регион (страницу пропускаем).
+
+    Раньше был fallback «Крым» — из-за него ВСЕ страницы общероссийских
+    категорий (вплоть до статей-понятий «Гроб», «Эпитафия» и крематориев
+    Новосибирска) сохранялись в базу как крымские.
+    """
     for c in CITY_HINTS:
         if c in text:
             return c
-    return "Крым"
+    return ""
+
+
+def _in_target_region(wikitext: str) -> bool:
+    """Статья вообще про наши 4 региона? Ищем маркеры в первых 8000 знаках."""
+    head = wikitext[:8000]
+    return any(h in head for h in REGION_HINTS)
 
 
 def _extract_from_infobox(wikitext: str, title: str) -> dict:
@@ -171,9 +190,13 @@ async def run(context):
     print(f"  всего уникальных страниц: {len(all_titles)}")
 
     added = 0
+    skipped_offregion = 0
     for i, title in enumerate(sorted(all_titles), 1):
         wt = _page_wikitext(title)
         if not wt:
+            continue
+        if not _in_target_region(wt):
+            skipped_offregion += 1
             continue
         try:
             data = _extract_from_infobox(wt, title)
@@ -182,7 +205,10 @@ async def run(context):
             continue
         if not data["name"]:
             continue
-        city = _detect_city(data["address"] or data["name"])
+        city = _detect_city(f"{data['address']} {data['name']} {wt[:4000]}")
+        if not city:
+            skipped_offregion += 1
+            continue
         if save_item({
             "city": city,
             "name": data["name"],
@@ -198,4 +224,4 @@ async def run(context):
         if i % 50 == 0:
             print(f"  [Wiki] прогресс: {i}/{len(all_titles)} обработано, +{added}")
 
-    print(f"\n[Wikipedia] добавлено: {added}")
+    print(f"\n[Wikipedia] добавлено: {added}, пропущено вне регионов: {skipped_offregion}")

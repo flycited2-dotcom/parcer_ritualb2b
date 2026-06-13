@@ -49,6 +49,10 @@ CITY_HINTS = (
     "Коктебель", "Партенит", "Гурзуф", "Новый Свет", "Форос",
     "Симеиз", "Алупка", "Ливадия", "Массандра", "Мисхор",
     "Канака", "Орджоникидзе", "Щёлкино", "Морское", "Малореченское",
+    # степной Крым
+    "Джанкой", "Красноперекопск", "Армянск", "Белогорск", "Старый Крым",
+    "Нижнегорский", "Советский", "Кировское", "Ленино", "Раздольное",
+    "Первомайское", "Октябрьское", "Черноморское",
     # Запорожская обл. (под контролем РФ)
     "Мелитополь", "Бердянск", "Энергодар", "Токмак", "Васильевка",
     "Каменка-Днепровская", "Приморск", "Молочанск", "Пологи", "Куйбышево",
@@ -56,6 +60,28 @@ CITY_HINTS = (
     "Геническ", "Новая Каховка", "Каховка", "Скадовск", "Алёшки",
     "Голая Пристань", "Чаплинка", "Новотроицкое", "Великая Лепетиха",
 )
+
+# Города ВНЕ целевой зоны, попадающие в широкий bbox: спорная зона
+# (правобережье Херсонской, Запорожье-город) и Краснодарский край.
+EXCLUDED_CITIES = {
+    "херсон", "запорожье", "николаев", "днепр", "никополь", "марганец",
+    "орехов", "гуляйполе", "берислав", "кривой рог", "каменское",
+    "анапа", "темрюк", "тамань",
+}
+# Координатные отсечки: восточнее — Краснодарский край, севернее — спорная зона.
+MAX_LON = 37.05
+MAX_LAT = 47.60
+
+
+def _is_excluded(city: str, lat: float | None, lon: float | None) -> bool:
+    if city and city.lower().strip() in EXCLUDED_CITIES:
+        return True
+    if lon is not None and lon > MAX_LON:
+        return True
+    if lat is not None and lat > MAX_LAT:
+        return True
+    return False
+
 
 # tag value → человекочитаемая category (далее normalize() → client_type)
 CATEGORY_MAP = {
@@ -183,6 +209,7 @@ async def run(context):
     print(f"  получено объектов: {len(elements)}")
 
     added = 0
+    skipped_nocity = 0
     for el in elements:
         tags = el.get("tags") or {}
         name = tags.get("name") or tags.get("name:ru") or tags.get("operator") or ""
@@ -194,8 +221,14 @@ async def run(context):
         if lat is None and "center" in el:
             lat = el["center"].get("lat")
             lon = el["center"].get("lon")
+        city = _detect_city(tags, lat, lon)
+        if not city or _is_excluded(city, lat, lon):
+            # bbox запроса шире целевых регионов (задевает Анапу, спорную зону).
+            # Без распознанного города или вне зоны — не пишем, иначе мусор в базе.
+            skipped_nocity += 1
+            continue
         item = {
-            "city": _detect_city(tags, lat, lon),
+            "city": city,
             "name": name,
             "address": _build_address(tags),
             "phone": _phone(tags),
@@ -208,4 +241,4 @@ async def run(context):
         if save_item(item):
             added += 1
 
-    print(f"\n[OSM] добавлено: {added}")
+    print(f"\n[OSM] добавлено: {added}, пропущено вне целевых городов: {skipped_nocity}")

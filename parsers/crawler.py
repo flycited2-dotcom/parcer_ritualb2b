@@ -170,7 +170,9 @@ def _detect_city_from_text(text: str) -> str:
     for c in CITY_HINTS:
         if c.lower() in low:
             return c
-    return "Крым"
+    # город не распознан — оставляем пустым (не врём «Крым»: seed-домены
+    # бывают и из Запорожской/Херсонской обл.)
+    return ""
 
 
 NAV_NAME_BLACKLIST_RE = re.compile(

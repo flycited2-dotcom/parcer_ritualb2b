@@ -46,12 +46,48 @@ VK_CITIES = {
     5490701: "Алупка",
 }
 
+# Города, для которых city_id резолвим динамически при старте (database.getCities).
+# Проверенные крымские id выше — хардкод; эти добираем в рантайме, чтобы не
+# терять Запорожскую/Херсонскую обл. и степной Крым (раньше их не было в матрице).
+EXTRA_CITY_NAMES = [
+    # степной Крым
+    "Джанкой", "Красноперекопск", "Армянск", "Белогорск", "Щёлкино",
+    # Запорожская обл. (под контролем РФ)
+    "Мелитополь", "Бердянск", "Энергодар", "Токмак", "Васильевка",
+    "Каменка-Днепровская", "Приморск", "Пологи",
+    # Херсонская обл. (левобережье)
+    "Геническ", "Новая Каховка", "Каховка", "Скадовск", "Алёшки",
+    "Голая Пристань",
+]
+
+
+def _resolve_extra_cities(token: str) -> dict[int, str]:
+    """database.getCities по EXTRA_CITY_NAMES → {city_id: name}.
+
+    Берём первый результат с точным совпадением title (без области-омонима).
+    Тихо пропускаем ненайденные — не наша зона ответственности, если VK их не знает.
+    """
+    out: dict[int, str] = {}
+    for name in EXTRA_CITY_NAMES:
+        r = _call("database.getCities", token, country_id=1, q=name, count=5)
+        time.sleep(RPS_PAUSE)
+        items = (r.get("response") or {}).get("items") if isinstance(r.get("response"), dict) else None
+        if not items:
+            continue
+        # точное совпадение названия в приоритете, иначе первый
+        chosen = next((it for it in items if (it.get("title") or "").lower() == name.lower()), items[0])
+        cid = chosen.get("id")
+        if cid:
+            out[cid] = name
+    return out
+
 QUERIES = [
     "ритуальные услуги", "ритуальное агентство", "похоронное бюро",
     "ритуальный магазин", "ритуальная атрибутика", "ритуальные товары",
+    "ритуальный салон", "ритуальная служба", "организация похорон",
     "венки", "памятники на могилу", "гробы", "надгробия",
     "ограды на могилу", "крематорий", "поминальные товары",
-    "мастерская памятников",
+    "мастерская памятников", "благоустройство могил", "кресты на могилу",
     # флористика (попутная ниша)
     "цветочный магазин", "доставка цветов",
 ]
@@ -59,8 +95,9 @@ QUERIES = [
 EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
 EMAIL_BLOCKLIST = ("noreply", "no-reply", "example.", "@vk.com", "@vkontakte")
 
-PREFERRED_PREFIXES = ("reservation", "reservations", "booking", "reserve", "book",
-                      "reception", "info", "sales", "office", "hotel", "manager")
+# Приоритетные local-part фирменных email (ритуальная ниша, не отели)
+PREFERRED_PREFIXES = ("info", "zakaz", "order", "ritual", "sales", "office",
+                      "manager", "contact", "mail", "admin")
 
 # VK API error codes, означающие что VK_TOKEN недействителен.
 _TOKEN_DEAD_CODES = (5, 15, 27, 28)
@@ -184,9 +221,20 @@ async def run(context):
 
     print("\n=== VK Groups ===")
 
+    # 0. Резолвим city_id для ЗП/Хс/степного Крыма и доливаем в матрицу
+    cities = dict(VK_CITIES)
+    try:
+        extra = _resolve_extra_cities(token)
+        new = {cid: n for cid, n in extra.items() if cid not in cities}
+        cities.update(new)
+        print(f"  [VK] динамически добавлено городов: {len(new)} "
+              f"({', '.join(sorted(new.values())) or '—'})")
+    except Exception as e:
+        print(f"  [VK] резолв доп.городов не удался: {e}")
+
     # 1. Сбор group_id по матрице город × категория
     found: dict[int, str] = {}  # group_id -> city_name откуда нашли
-    for city_id, city_name in VK_CITIES.items():
+    for city_id, city_name in cities.items():
         for q in QUERIES:
             r = _call("groups.search", token, q=q, city_id=city_id,
                       count=200, sort=0)
@@ -241,7 +289,7 @@ async def run(context):
                 or found.get(gid, "Крым")
             screen = g.get("screen_name") or f"club{gid}"
             social = f"https://vk.com/{screen}"
-            activity = g.get("activity") or "размещение"
+            activity = g.get("activity") or ""
 
             verdict = vk_classify(name, activity)
             if verdict == "noise":

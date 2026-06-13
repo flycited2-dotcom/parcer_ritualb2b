@@ -103,7 +103,9 @@ async def on_menu(cb: CallbackQuery) -> None:
                     kb or back_kb())
     elif action == "sched":
         _, out = await _run("systemctl", "list-timers", "--all", PARSER_TIMER)
-        await _edit(cb, f"🗓 <b>Расписание</b>\n<pre>{out.strip() or '—'}</pre>", back_kb())
+        import html as _html
+        await _edit(cb, f"🗓 <b>Расписание</b>\n<pre>{_html.escape(out.strip()) or '—'}</pre>",
+                    back_kb())
     elif action == "reupload":
         await cb.answer("Перезаливаю…")
         await cb.message.answer(await reupload_master())

@@ -11,29 +11,50 @@ from datetime import datetime
 from urllib.parse import urlparse, quote_plus, parse_qs, unquote
 
 from utils.storage import save_item
+from parsers.vk_filter import classify as noise_classify
+from parsers.osm import CITY_HINTS
 
 CATEGORIES = [
     "ритуальные услуги", "похоронное бюро", "ритуальный магазин",
     "памятники надгробия", "венки", "крематорий", "цветочный магазин",
 ]
 
-CITIES = [
-    "Симферополь", "Ялта", "Севастополь", "Евпатория", "Феодосия",
-    "Керчь", "Алушта", "Судак", "Саки", "Бахчисарай",
-    "Мелитополь", "Бердянск", "Энергодар", "Геническ", "Новая Каховка", "Каховка",
-]
+# город → регион для поискового запроса. Раньше ко ВСЕМ городам клеилось
+# «Крым» («ритуальные услуги Мелитополь Крым») — для Запорожской/Херсонской
+# обл. это ломало выдачу и убивало покрытие двух регионов из четырёх.
+CITY_REGION = {
+    "Симферополь": "Крым", "Ялта": "Крым", "Севастополь": "Крым",
+    "Евпатория": "Крым", "Феодосия": "Крым", "Керчь": "Крым",
+    "Алушта": "Крым", "Судак": "Крым", "Саки": "Крым", "Бахчисарай": "Крым",
+    "Джанкой": "Крым", "Красноперекопск": "Крым", "Армянск": "Крым",
+    "Белогорск": "Крым", "Старый Крым": "Крым", "Щёлкино": "Крым",
+    "Мелитополь": "Запорожская область", "Бердянск": "Запорожская область",
+    "Энергодар": "Запорожская область", "Токмак": "Запорожская область",
+    "Васильевка": "Запорожская область", "Пологи": "Запорожская область",
+    "Приморск": "Запорожская область",
+    "Геническ": "Херсонская область", "Новая Каховка": "Херсонская область",
+    "Каховка": "Херсонская область", "Скадовск": "Херсонская область",
+    "Алёшки": "Херсонская область", "Голая Пристань": "Херсонская область",
+}
+
+CITIES = list(CITY_REGION)
 
 # «Человеческие» формулировки — собирают то, что не находится по жёсткой матрице.
+_BROAD_TEMPLATES = [
+    "ритуальные услуги {region}",
+    "похоронное бюро {region}",
+    "ритуальный магазин {region}",
+    "памятники надгробия {region}",
+    "венки купить {region}",
+    "ритуальная атрибутика {region}",
+    "организация похорон {region}",
+    "мастерская памятников {region}",
+    "цветочный магазин {region}",
+]
 BROAD_QUERIES = [
-    "ритуальные услуги Крым",
-    "похоронное бюро Крым",
-    "ритуальный магазин Крым",
-    "памятники надгробия Крым",
-    "венки купить Крым",
-    "ритуальная атрибутика Крым",
-    "организация похорон Крым",
-    "мастерская памятников Крым",
-    "цветочный магазин Крым",
+    t.format(region=r)
+    for r in ("Крым", "Запорожская область", "Херсонская область")
+    for t in _BROAD_TEMPLATES
 ]
 
 # То же, но с привязкой к городу.
@@ -328,8 +349,21 @@ async def _process_search_query(context, search_page, query: str,
         if not name:
             continue
 
+        # отсев явного шума (свадьбы, стоматологии, новости...) по словарю
+        if noise_classify(name) == "noise":
+            continue
+
+        # город: для широких запросов без города пробуем выудить из адреса
+        row_city = city
+        if not row_city and details["address"]:
+            low_addr = details["address"].lower()
+            for c in CITY_HINTS:
+                if c.lower() in low_addr:
+                    row_city = c
+                    break
+
         if save_item({
-            "city": city,
+            "city": row_city,
             "name": name,
             "address": details["address"],
             "phone": details["phone"],
@@ -356,23 +390,24 @@ async def run(context):
     seen_origins: set[str] = set()
     total_added = 0
 
-    # 1. Узкая матрица «категория × город»
+    # 1. Узкая матрица «категория × город» (регион — свой для каждого города)
     for category in CATEGORIES:
         for city in CITIES:
+            region = CITY_REGION.get(city, "")
             try:
                 total_added += await _process_search_query(
-                    context, page, f"{category} {city} Крым",
+                    context, page, f"{category} {city} {region}".strip(),
                     city, category, seen_origins,
                 )
             except Exception as e:
                 print(f"  CRIT: {e}")
         await asyncio.sleep(random.uniform(3.0, 6.0))
 
-    # 2. Широкие «человеческие» запросы по Крыму без города
+    # 2. Широкие «человеческие» запросы по регионам без города
     for q in BROAD_QUERIES:
         try:
             total_added += await _process_search_query(
-                context, page, q, "Крым", "общий", seen_origins,
+                context, page, q, "", "общий", seen_origins,
             )
         except Exception as e:
             print(f"  CRIT: {e}")

@@ -28,8 +28,9 @@ from services.systemd import (EMAILS_UNIT, PARSER_TIMER, PARSER_UNIT, _run,
 log = logging.getLogger(__name__)
 router = Router()
 
+# Ключи источников из main.py:RUNNERS (отельные 2gis/avito/... удалены)
 VALID_SOURCES = ("osm", "wikidata", "wikipedia", "vk", "yandex", "search",
-                 "2gis", "avito", "sutochno", "ostrovok", "crawler")
+                 "crawler")
 
 
 @router.message(F.func(lambda m: not is_admin(m.chat.id)))
@@ -82,7 +83,7 @@ async def cmd_run(m: Message) -> None:
         await m.answer(f"✅ {PARSER_UNIT} запущен (TimeoutStartSec=12h, fire-and-forget)\n"
                        f"Прогресс: /status. Финальный отчёт придёт автоматически.")
     else:
-        await m.answer(f"❌ systemctl start: rc={code}\n<pre>{out}</pre>", parse_mode="HTML")
+        await m.answer(f"❌ systemctl start: rc={code}\n<pre>{esc(out)}</pre>", parse_mode="HTML")
 
 
 @router.message(Command("run_emails"))
@@ -94,7 +95,7 @@ async def cmd_run_emails(m: Message) -> None:
     if code == 0:
         await m.answer(f"✅ {EMAILS_UNIT} запущен — обогащает последний CSV.")
     else:
-        await m.answer(f"❌ systemctl start: rc={code}\n<pre>{out}</pre>", parse_mode="HTML")
+        await m.answer(f"❌ systemctl start: rc={code}\n<pre>{esc(out)}</pre>", parse_mode="HTML")
 
 
 @router.message(Command("run_source"))
@@ -108,7 +109,7 @@ async def cmd_run_source(m: Message, command: CommandObject) -> None:
     if code == 0:
         await m.answer(f"✅ {unit} запущен (ONLY_SOURCE={name}, без email_finder).")
     else:
-        await m.answer(f"❌ rc={code}\n<pre>{out[:1000]}</pre>", parse_mode="HTML")
+        await m.answer(f"❌ rc={code}\n<pre>{esc(out[:1000])}</pre>", parse_mode="HTML")
 
 
 @router.message(Command("stop"))
@@ -117,7 +118,7 @@ async def cmd_stop(m: Message) -> None:
     if code == 0:
         await m.answer(f"🛑 {PARSER_UNIT} остановлен.")
     else:
-        await m.answer(f"❌ systemctl stop: rc={code}\n<pre>{out}</pre>", parse_mode="HTML")
+        await m.answer(f"❌ systemctl stop: rc={code}\n<pre>{esc(out)}</pre>", parse_mode="HTML")
 
 
 _OUTPUT_DIR = "/home/ritual_parser/output"
@@ -146,7 +147,10 @@ async def cmd_reports(m: Message) -> None:
 
 @router.callback_query(lambda c: c.data and c.data.startswith("dl:"))
 async def cb_download_file(callback: CallbackQuery) -> None:
-    if callback.from_user.id not in ADMIN_IDS:
+    # авторизация по chat.id (не from_user.id!) — в группе личный id участника
+    # отсутствует в ADMIN_CHAT_IDS, и кнопки молча не работали (та же бага,
+    # что чинили в menu.py).
+    if not is_admin(callback.message.chat.id):
         await callback.answer()
         return
     name = os.path.basename(callback.data[3:])  # sanitize: strip any path component
@@ -189,13 +193,13 @@ async def cmd_logs(m: Message, command: CommandObject) -> None:
     out = await journal_tail(PARSER_UNIT, n=n)
     if len(out) > 3500:
         out = out[-3500:]
-    await m.answer(f"<pre>{out or 'пусто'}</pre>", parse_mode="HTML")
+    await m.answer(f"<pre>{esc(out) or 'пусто'}</pre>", parse_mode="HTML")
 
 
 @router.message(Command("health"))
 async def cmd_health(m: Message) -> None:
     out = await health()
-    await m.answer(f"<pre>{out}</pre>", parse_mode="HTML")
+    await m.answer(f"<pre>{esc(out)}</pre>", parse_mode="HTML")
 
 
 @router.message(Command("sources"))
@@ -274,7 +278,7 @@ async def cmd_timer_on(m: Message) -> None:
     code, out = await systemctl("enable", PARSER_TIMER)
     code2, out2 = await systemctl("start", PARSER_TIMER)
     if code == 0 and code2 == 0:
-        await m.answer(f"✅ {PARSER_TIMER}: enabled+started (вс 03:00)")
+        await m.answer(f"✅ {PARSER_TIMER}: enabled+started (пн 03:00)")
     else:
         await m.answer(f"<pre>enable: rc={code}\n{out}\nstart: rc={code2}\n{out2}</pre>",
                        parse_mode="HTML")
@@ -295,6 +299,6 @@ async def cmd_timer_off(m: Message) -> None:
 async def cmd_schedule(m: Message) -> None:
     code, out = await _run("systemctl", "list-timers", "--all", PARSER_TIMER)
     if code != 0:
-        await m.answer(f"<pre>rc={code}\n{out}</pre>", parse_mode="HTML")
+        await m.answer(f"<pre>rc={code}\n{esc(out)}</pre>", parse_mode="HTML")
         return
-    await m.answer(f"<pre>{out}</pre>", parse_mode="HTML")
+    await m.answer(f"<pre>{esc(out)}</pre>", parse_mode="HTML")

@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import glob
 import os
+import re
 from collections import OrderedDict
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -17,10 +18,20 @@ FIELDNAMES = [
 ]
 
 
+_NORM_RE = re.compile(r"[^\w\s]", re.UNICODE)
+_WS_RE = re.compile(r"\s+")
+
+
 def _dedup_key(row: dict) -> str:
-    name = (row.get("name") or "").strip().lower()
-    phone = (row.get("phone") or "").strip().replace(" ", "").replace("-", "")
-    return f"{name}|{phone}"
+    """Ключ (name, city) — как в utils/dedup.py.
+
+    Раньше ключом был (name, phone): одна и та же фирма без телефона (raw CSV)
+    и с телефоном (enriched CSV) давала ДВЕ записи в мастере. (name, city)
+    схлопывает их, а недостающие поля доливаются в _load_csv_into.
+    """
+    name = _WS_RE.sub(" ", _NORM_RE.sub(" ", (row.get("name") or "").lower())).strip()
+    city = (row.get("city") or "").strip().lower()
+    return f"{name}|{city}"
 
 
 def build_master(output_dir: str = OUTPUT_DIR) -> str:

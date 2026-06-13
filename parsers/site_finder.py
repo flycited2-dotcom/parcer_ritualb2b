@@ -57,6 +57,8 @@ def find_website(name: str, city: str, timeout: int = 15) -> str | None:
 
 def _extract_domain(url: str) -> str:
     try:
-        return urllib.parse.urlparse(url).netloc.lstrip("www.")
+        host = urllib.parse.urlparse(url).netloc.lower()
+        # не lstrip("www."): он съедает и первые буквы домена (wiki… → iki…)
+        return host.removeprefix("www.")
     except Exception:
         return ""

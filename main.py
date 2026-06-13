@@ -99,6 +99,10 @@ async def main():
     import time
     from utils.storage import total as storage_total
 
+    # После тяжёлых Chromium-источников пересоздаём браузер: за часы скроллов
+    # и кликов он накапливает память, а на сервере её всего 5.8 ГБ.
+    RESTART_BROWSER_AFTER = {"yandex", "search"}
+
     async with async_playwright() as p:
         browser, context = await create_browser_context(p, headless=headless)
         try:
@@ -109,6 +113,13 @@ async def main():
                 try:
                     await runner(context)
                     progress.mark_completed_source(label)
+                    if _key in RESTART_BROWSER_AFTER:
+                        try:
+                            await browser.close()
+                        except Exception:
+                            pass
+                        browser, context = await create_browser_context(p, headless=headless)
+                        print(f"  [browser] пересоздан после {label}")
                     added = storage_total() - count_before
                     elapsed = int(time.monotonic() - stage_started)
                     try:
@@ -127,6 +138,17 @@ async def main():
                             send_message(tok, chat, f"⚠️ <b>{label}</b>: ошибка — <code>{str(e)[:200]}</code>")
                     except Exception:
                         pass
+                    # источник мог уронить браузер — пересоздаём, чтобы не
+                    # потерять оставшиеся источники
+                    try:
+                        await browser.close()
+                    except Exception:
+                        pass
+                    try:
+                        browser, context = await create_browser_context(p, headless=headless)
+                        print(f"  [browser] пересоздан после ошибки в {label}")
+                    except Exception as be:
+                        print(f"  [browser] не удалось пересоздать: {be}")
         finally:
             await browser.close()
 

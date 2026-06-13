@@ -29,7 +29,12 @@ from utils.storage import CSV_DELIMITER, FIELDS, normalize_phone
 OUTPUT_FILE = f"output/result_enriched_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
 
 EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
-PHONE_RE = re.compile(r"(?:\+7|8)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}")
+# +7/8 (РФ) и +380 (старые номера в Запорожской/Херсонской обл. — до сих пор
+# встречаются на сайтах и вывесках, терять их нельзя)
+PHONE_RE = re.compile(
+    r"(?:\+7|8)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}"
+    r"|\+?380[\s\-]?\(?\d{2}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}"
+)
 
 # Адрес: префикс города (`г.`/`город` etc) + ИМЯ_СОБСТВЕННОЕ (заглавная) +
 # тип улицы + название, всё в одной строке. Точки обязательны для сокращений,
@@ -61,12 +66,11 @@ EMAIL_BLOCKLIST = (
     "your@email", "name@email", "test@",
 )
 
-# Префиксы фирменных email отелей — чем выше в списке, тем выше приоритет.
+# Приоритетные local-part фирменных email (ритуальная ниша, не отели).
 PREFERRED_EMAIL_PREFIXES = (
-    "reservation", "reservations", "booking", "book",
-    "reception", "info", "hotel", "hotels",
+    "info", "zakaz", "order", "ritual",
     "sales", "manager", "office", "contact",
-    "rsv", "stay",
+    "mail", "admin",
 )
 
 CONTACT_PATHS = [
@@ -79,13 +83,8 @@ CONTACT_PATHS = [
     "/svyazatsya", "/связаться", "/контакты", "/о-нас",
     "/index.php?route=information/contact",
     "/info/contacts", "/cms/contacts",
-    # Hotel-specific
-    "/booking", "/reservation", "/reservations", "/book",
-    "/reserve", "/bronirovat", "/zabronirovat",
-    "/cooperation", "/partners", "/agents", "/info-hotel",
-    "/rezervirovanie", "/бронирование",
     # Pricing pages (often contain contact info)
-    "/price", "/prices", "/tseny",
+    "/price", "/prices", "/tseny", "/uslugi",
 ]
 
 SOCIAL_HOSTS = (
