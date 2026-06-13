@@ -48,7 +48,8 @@ def _btn(text: str, data: str) -> InlineKeyboardButton:
 
 def main_menu_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [_btn("▶ Прогон", "menu:run"), _btn("📊 Статус", "menu:status")],
+        [_btn("📊 Excel в чат", "menu:excel")],
+        [_btn("▶ Прогон", "menu:run"), _btn("📈 Статус", "menu:status")],
         [_btn("🔄 Прогресс", "menu:progress"), _btn("🗄 Стата базы", "menu:stats")],
         [_btn("📁 Файлы", "menu:files"), _btn("☁ Drive", "menu:drive")],
         [_btn("🗓 Расписание", "menu:sched")],

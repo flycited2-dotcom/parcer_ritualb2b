@@ -62,6 +62,25 @@ _REUP_CODE = (
 )
 
 
+_BUILD_XLSX_CODE = (
+    "import os\n"
+    "from dotenv import load_dotenv; load_dotenv()\n"
+    "from utils.merger import build_master_xlsx\n"
+    "c, x = build_master_xlsx()\n"
+    "print('XLSX:' + (x or ''))\n"
+)
+
+
+async def build_master_xlsx_path(timeout: float = 240) -> str:
+    """Собрать master_all.xlsx в venv парсера, вернуть путь к файлу (или '')."""
+    code, out = await _parser_py(_BUILD_XLSX_CODE, timeout=timeout)
+    for line in out.splitlines():
+        if line.startswith("XLSX:"):
+            path = line[5:].strip()
+            return path if path and os.path.exists(path) else ""
+    return ""
+
+
 async def get_drive_text() -> str:
     link = folder_link()
     if not link:

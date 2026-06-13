@@ -6,11 +6,11 @@ import os
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
-from aiogram.types import (CallbackQuery, InlineKeyboardButton,
+from aiogram.types import (CallbackQuery, FSInputFile, InlineKeyboardButton,
                            InlineKeyboardMarkup, Message)
 
 from services.auth import ADMIN_IDS, is_admin
-from services.drive import get_drive_text, reupload_master
+from services.drive import build_master_xlsx_path, get_drive_text, reupload_master
 from services.panel import (back_kb, drive_kb, main_menu_kb, run_menu_kb,
                             status_text)
 from services.progress import get_progress_text
@@ -106,6 +106,21 @@ async def on_menu(cb: CallbackQuery) -> None:
         import html as _html
         await _edit(cb, f"🗓 <b>Расписание</b>\n<pre>{_html.escape(out.strip()) or '—'}</pre>",
                     back_kb())
+    elif action == "excel":
+        await cb.answer("Собираю Excel…")
+        await cb.message.answer("⏳ Собираю Excel со всей базой…")
+        try:
+            path = await build_master_xlsx_path()
+        except Exception as e:
+            await cb.message.answer(f"❌ Не удалось собрать Excel: {e}")
+            return
+        if path:
+            await cb.message.answer_document(
+                FSInputFile(path), caption="📊 master_all.xlsx — вся база для обзвона")
+        else:
+            await cb.message.answer(
+                "Пока нечего отдавать — база пуста или идёт первый прогон. "
+                "Дождись конца сбора или попробуй позже.")
     elif action == "reupload":
         await cb.answer("Перезаливаю…")
         await cb.message.answer(await reupload_master())
