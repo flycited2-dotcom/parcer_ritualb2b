@@ -73,18 +73,12 @@ PREFERRED_EMAIL_PREFIXES = (
     "mail", "admin",
 )
 
+# Самые продуктивные контакт-страницы (раньше список был ~28 — обход каждой
+# с таймаутом по мёртвым URL давал ~60с/запись и 47ч на прогон). Оставлены
+# ~8 наиболее частых; обход ограничен по числу и таймауту.
 CONTACT_PATHS = [
-    "/contacts", "/contact", "/contact-us", "/contact_us",
-    "/kontakty", "/kontakt", "/contacts.html", "/contact.html",
-    "/o-nas", "/o_nas", "/about", "/about-us", "/about_us",
-    "/o-kompanii", "/o_kompanii",
-    "/page/contact", "/page/contacts", "/feedback", "/info",
-    "/obratnaya-svyaz", "/obratnaya_svyaz",
-    "/svyazatsya", "/связаться", "/контакты", "/о-нас",
-    "/index.php?route=information/contact",
-    "/info/contacts", "/cms/contacts",
-    # Pricing pages (often contain contact info)
-    "/price", "/prices", "/tseny", "/uslugi",
+    "/contacts", "/contact", "/kontakty", "/kontakt",
+    "/about", "/o-nas", "/контакты", "/index.php?route=information/contact",
 ]
 
 SOCIAL_HOSTS = (
@@ -449,15 +443,18 @@ async def enrich_from_website(page, website: str) -> tuple[str, str, str, str]:
     """Возвращает (email, phone, address, social)."""
     email = phone = address = social = ""
     site_domain = _site_domain(website)
+    # Соцсеть как «сайт» не обходим контакт-страницами: там их нет, а goto по
+    # vk.com/instagram медленный. Email из VK берётся через vk_email fallback.
+    is_social = any(h in site_domain for h in SOCIAL_HOSTS)
     try:
         try:
-            await page.goto(website, wait_until="domcontentloaded", timeout=20000)
+            await page.goto(website, wait_until="domcontentloaded", timeout=15000)
         except Exception as e:
             print(f"    goto fail: {e}")
             return "", "", "", ""
-        await page.wait_for_timeout(1500)
-        await _scroll_to_bottom(page, n=4)
-        await page.wait_for_timeout(800)
+        await page.wait_for_timeout(1200)
+        await _scroll_to_bottom(page, n=3)
+        await page.wait_for_timeout(500)
 
         e, p, a, s = await _harvest_page(page, site_domain)
         email = email or e
@@ -465,20 +462,23 @@ async def enrich_from_website(page, website: str) -> tuple[str, str, str, str]:
         address = address or a
         social = social or s
 
-        if not (email and phone and address):
-            # Build pages-to-visit list: standard paths + sitemap contact URLs
+        # Контакт-страницы добираем только для обычных сайтов и только если
+        # не хватает email или phone (адрес — необязателен для звонка).
+        if not is_social and not (email and phone):
             base_url = website.rstrip("/")
             pages_to_visit: list[str] = [base_url + p for p in CONTACT_PATHS]
-            sitemap_urls = _get_sitemap_contact_urls(base_url)
+            sitemap_urls = _get_sitemap_contact_urls(base_url, limit=3)
             pages_to_visit.extend(u for u in sitemap_urls if u not in pages_to_visit)
 
+            visited = 0
             for page_url in pages_to_visit:
-                if email and phone and address:
+                if (email and phone) or visited >= 6:
                     break
+                visited += 1
                 try:
-                    await page.goto(page_url, wait_until="domcontentloaded", timeout=10000)
-                    await page.wait_for_timeout(1000)
-                    await _scroll_to_bottom(page, n=2)
+                    await page.goto(page_url, wait_until="domcontentloaded", timeout=7000)
+                    await page.wait_for_timeout(600)
+                    await _scroll_to_bottom(page, n=1)
                     e, p, a, s = await _harvest_page(page, site_domain)
                     email = email or e
                     phone = phone or p
@@ -517,9 +517,12 @@ async def run_enrichment(input_csv: str):
         print(f"Не удалось прочитать CSV: {input_csv}")
         return None
 
-    targets = [r for r in rows if r.get("website") and (
+    targets = [r for r in rows
+               if "review" not in (r.get("comment") or "").lower()
+               and r.get("website") and (
         not r.get("email") or not r.get("phone") or not r.get("address") or not r.get("social", ""))]
-    print(f"\n=== Email Finder: {len(targets)}/{len(rows)} объектов на обогащение ===")
+    print(f"\n=== Email Finder: {len(targets)}/{len(rows)} объектов на обогащение "
+          f"(ambiguous пропускаются) ===")
 
     # Заранее подбираем client_type для строк без него (CSV из старой схемы).
     try:
@@ -560,6 +563,10 @@ async def run_enrichment(input_csv: str):
             page = await context.new_page()
 
             for i, row in enumerate(rows):
+                # ambiguous VK-группы (needs_review) — низкое качество и высокий
+                # объём: не тратим на них обход сайтов. Они и так в «Требуют проверки».
+                if "review" in (row.get("comment") or "").lower():
+                    continue
                 if not (row.get("website") or "").strip():
                     found = find_website(row.get("name", ""), row.get("city", ""))
                     if found:
